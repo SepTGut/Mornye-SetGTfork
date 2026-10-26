@@ -53,6 +53,9 @@ extension NetworkStorageDelete on NetworkStorageService {
       } on Smb2Exception catch (error) {
         if (error.type == Smb2ErrorType.fileNotFound) return true;
         rethrow;
+      } on SmbException catch (error) {
+        if (error.type == SmbErrorType.fileNotFound) return true;
+        rethrow;
       } finally {
         try {
           await smb.close();

@@ -462,7 +462,7 @@ class _NetworkStorageScreenState extends ConsumerState<NetworkStorageScreen> {
                             showIconInMornye: true,
                             title: c.name,
                             subtitle:
-                                '${_protocolLabel(c.protocol)} · ${c.root.host}',
+                                '${_protocolLabel(c.protocol)}${c.smb1 ? ' (SMB1)' : ''} · ${c.root.host}',
                             onTap: () => _open(c),
                             showDivider: false,
                             trailing: _NetworkIconAction(
@@ -482,7 +482,7 @@ class _NetworkStorageScreenState extends ConsumerState<NetworkStorageScreen> {
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(24, 4, 24, 20),
                       child: Text(
-                        '${_protocolLabel(connection.protocol)} · ${connection.root.host}'
+                        '${_protocolLabel(connection.protocol)}${connection.smb1 ? ' (SMB1)' : ''} · ${connection.root.host}'
                         '${_subsonic ? '' : '\n/${widget.path}'}',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -592,6 +592,7 @@ class _NetworkConnectionFormState extends State<_NetworkConnectionForm> {
   late final _apiKey = TextEditingController(text: widget.connection?.apiKey);
   late var _auth = widget.connection?.subsonicAuth ?? SubsonicAuth.saltedToken;
   late var _protocol = widget.connection?.protocol ?? NetworkProtocol.smb;
+  late bool _smb1 = widget.connection?.smb1 ?? false;
   late String? _trustedCertificate =
       widget.connection?.trustedCertificateSha256;
   late String? _trustedOrigin = widget.connection?.root.scheme == 'https'
@@ -648,6 +649,7 @@ class _NetworkConnectionFormState extends State<_NetworkConnectionForm> {
                 _auth == SubsonicAuth.apiKey
             ? _apiKey.text.trim()
             : '',
+        smb1: _protocol == NetworkProtocol.smb && _smb1,
         trustedCertificateSha256:
             Uri.tryParse(_address.text.trim())?.scheme == 'https' &&
                 Uri.parse(_address.text.trim()).origin == _trustedOrigin
@@ -909,8 +911,52 @@ class _NetworkConnectionFormState extends State<_NetworkConnectionForm> {
                           required: _protocol == NetworkProtocol.subsonic,
                         ),
                       ],
-                      if (_protocol == NetworkProtocol.smb)
+                      if (_protocol == NetworkProtocol.smb) ...[
                         _field(_domain, context.l10n.networkDomain),
+                        const SizedBox(height: 8),
+                        SwitchListTile.adaptive(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(
+                            context.l10n.networkSmb1Toggle,
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          subtitle: Text(
+                            context.l10n.networkSmb1Subtitle,
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                          value: _smb1,
+                          onChanged: (value) async {
+                            if (value) {
+                              final confirm = await showDialog<bool>(
+                                context: context,
+                                builder: (ctx) => AlertDialog.adaptive(
+                                  title: Text(context.l10n.networkSmb1WarningTitle),
+                                  content: Text(context.l10n.networkSmb1Warning),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(ctx, false),
+                                      child: Text(
+                                        MaterialLocalizations.of(ctx).cancelButtonLabel,
+                                      ),
+                                    ),
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(ctx, true),
+                                      child: Text(
+                                        MaterialLocalizations.of(ctx).okButtonLabel,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              if (confirm == true) {
+                                setState(() => _smb1 = true);
+                              }
+                            } else {
+                              setState(() => _smb1 = false);
+                            }
+                          },
+                        ),
+                      ],
                       const SizedBox(height: 12),
                     ],
                   ),

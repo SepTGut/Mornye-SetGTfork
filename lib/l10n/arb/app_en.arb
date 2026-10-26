@@ -81,9 +81,25 @@
   "@networkErrorShare": {
     "description": "Network access error for a missing share or folder; share means an SMB shared folder and the example illustrates its URL path"
   },
-  "networkErrorProtocol": "The server and this SMB client could not agree on a supported protocol. Enable SMB2 or SMB3 on the server. SMB1 is not supported.",
+  "networkErrorProtocol": "The server and this SMB client could not agree on a supported protocol. Enable SMB2 or SMB3 on the server, or enable Legacy SMB1 in connection settings.",
   "@networkErrorProtocol": {
     "description": "Network access error for incompatible SMB protocol versions; preserve the version names SMB1, SMB2, and SMB3"
+  },
+  "networkSmb1Toggle": "Legacy SMB1 (insecure)",
+  "@networkSmb1Toggle": {
+    "description": "Toggle switch label for enabling legacy SMB1 protocol"
+  },
+  "networkSmb1Subtitle": "Enable only for legacy NAS or routers that do not support SMB2/3",
+  "@networkSmb1Subtitle": {
+    "description": "Subtitle explaining SMB1 compatibility"
+  },
+  "networkSmb1WarningTitle": "Enable Legacy SMB1?",
+  "@networkSmb1WarningTitle": {
+    "description": "Warning dialog title when enabling SMB1"
+  },
+  "networkSmb1Warning": "SMB1 has no network encryption and weak integrity protection. Traffic, including file names and audio, will be unencrypted on your network. Use only on a trusted LAN.",
+  "@networkSmb1Warning": {
+    "description": "Warning dialog content explaining the security risks of SMB1"
   },
   "networkErrorAddress": "Check the server address. Use smb://server/share/ for SMB, or an http:// or https:// address for WebDAV and HTTP.",
   "@networkErrorAddress": {

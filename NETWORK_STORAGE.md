@@ -7,12 +7,17 @@ to change credentials or remove it. Removing a connection never deletes files
 from the server.
 
 - SMB: `smb://nas/Music/`, optional username, password, and domain. Defaults to
-  port 445; explicit ports are supported. The native libsmb2 client negotiates
-  SMB 2.0.2, 2.1, 3.0, 3.0.2 or 3.1.1 and supports required signing and encryption.
-  SMB1 is never offered. Leave the domain empty unless your server requires it.
-  OpenWRT can run Samba4 or ksmbd; use the share name and the same account as
-  the other client. Guest access is only attempted when credentials are blank,
-  never as an automatic fallback after a named account fails.
+  port 445; explicit ports are supported (including NetBIOS port 139). By default,
+  the native libsmb2 client negotiates SMB 2.0.2, 2.1, 3.0, 3.0.2 or 3.1.1 and supports
+  required signing and encryption; SMB1 is never offered automatically.
+  For legacy servers, vintage NAS appliances, or older routers that only support SMBv1,
+  enable **Legacy SMB1 (insecure)** in connection settings. The built-in pure-Dart
+  SMB1 client negotiates the `NT LM 0.12` dialect with NTLMSSP/NTLMv2 authentication,
+  MD5 request/response signing, and NetBIOS session support. Plaintext authentication
+  and share-level security are strictly refused for safety. Leave the domain empty
+  unless your server requires it. OpenWRT can run Samba4 or ksmbd; use the share name
+  and the same account as the other client. Guest access is only attempted when
+  credentials are blank, never as an automatic fallback after a named account fails.
 - WebDAV: `https://nas.example/dav/music/`, optional HTTP Basic authentication.
   Routers such as GL.iNet use self-signed HTTPS certificates. If validation
   fails, the connection form shows the server origin and SHA-256 fingerprint.

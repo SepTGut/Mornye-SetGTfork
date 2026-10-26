@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:dart_smb2/dart_smb2.dart';
+import 'package:mornye/services/smb/smb_client.dart';
 import 'package:synchronized/synchronized.dart';
 
 /// SMB2/3 only. Native network and crypto work runs off the UI isolate.
@@ -12,11 +13,12 @@ import 'package:synchronized/synchronized.dart';
 /// Serialize native calls across pools: libsmb2 maintains a process-wide
 /// context list. Lock individual reads, never an entire audio stream, so cover
 /// and metadata requests can run between bounded playback chunks.
-class NetworkSmbClient {
+class NetworkSmbClient implements SmbClient {
   NetworkSmbClient._(this._pool, this.path);
 
   static final _native = Lock();
   final Smb2Pool _pool;
+  @override
   final String path;
   bool _closed = false;
 
@@ -44,26 +46,52 @@ class NetworkSmbClient {
     return NetworkSmbClient._(pool, segments.skip(1).join('/'));
   }
 
-  Future<List<Smb2DirEntry>> list() =>
-      _native.synchronized(() => _pool.listDirectory(path));
+  @override
+  Future<List<SmbEntry>> list() async {
+    final raw = await _native.synchronized(() => _pool.listDirectory(path));
+    return [
+      for (final entry in raw)
+        SmbEntry(
+          name: entry.name,
+          isDirectory: entry.stat.isDirectory,
+          size: entry.stat.size,
+          modifiedTime: entry.stat.modified.millisecondsSinceEpoch,
+        ),
+    ];
+  }
 
-  static Future<List<Smb2ShareInfo>> shares(
+  static Future<List<SmbShare>> shares(
     Uri target, {
     required String username,
     required String password,
     required String domain,
     required Duration timeout,
-  }) => _native.synchronized(
-    () => Smb2Pool.listSharesOn(
-      host: target.hasPort ? target.authority : target.host,
-      user: username,
-      password: password,
-      domain: domain,
-      timeoutSeconds: timeout.inSeconds,
-    ),
-  );
+  }) async {
+    final raw = await _native.synchronized(
+      () => Smb2Pool.listSharesOn(
+        host: target.hasPort ? target.authority : target.host,
+        user: username,
+        password: password,
+        domain: domain,
+        timeoutSeconds: timeout.inSeconds,
+      ),
+    );
+    return [
+      for (final s in raw)
+        SmbShare(name: s.name, isDisk: s.isDisk),
+    ];
+  }
 
-  Future<Smb2Stat> stat() => _native.synchronized(() => _pool.stat(path));
+  @override
+  Future<SmbStat> stat() async {
+    final s = await _native.synchronized(() => _pool.stat(path));
+    return SmbStat(
+      isFile: s.isFile,
+      isDirectory: s.isDirectory,
+      size: s.size,
+      modified: s.modified,
+    );
+  }
 
   Future<void> mkdir(String relative) =>
       _native.synchronized(() => _pool.mkdir(relative));

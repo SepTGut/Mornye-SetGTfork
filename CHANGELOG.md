@@ -1,5 +1,13 @@
 # Changelog
 
+## [5.3.0] - 2026-10-26
+
+### Added
+
+- **Legacy SMBv1 Support**: Added opt-in support for SMBv1 (NT LM 0.12) with NTLMSSP/NTLMv2 authentication, MD5 request/response packet signing, and NetBIOS session support for connecting to legacy NAS appliances, vintage network drives, and older routers. Includes a security confirmation dialog, connection badging, and explicit refusal of insecure plaintext passwords or share-level security.
+
+---
+
 ## [4.9.6] - 2026-09-07
 
 ### Added

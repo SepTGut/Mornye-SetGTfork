@@ -5,6 +5,7 @@ import 'package:dart_smb2/dart_smb2.dart';
 import 'package:mornye/services/local_network_access.dart';
 import 'package:mornye/services/network_certificate.dart';
 import 'package:mornye/services/network_storage_service.dart';
+import 'package:mornye/services/smb/smb_client.dart';
 
 enum NetworkStorageError {
   unreachable,
@@ -41,6 +42,7 @@ NetworkStorageError classifyNetworkStorageError(Object error) {
   if (error is SocketException) return NetworkStorageError.unreachable;
   if (error is FormatException) return NetworkStorageError.invalidAddress;
   final message = switch (error) {
+    SmbException(:final message) => message,
     Smb2Exception(:final message) => message,
     HttpException(:final message) => message,
     String value => value,
@@ -68,6 +70,19 @@ NetworkStorageError classifyNetworkStorageError(Object error) {
   if (message == 'server returned 404') return NetworkStorageError.missingShare;
   if (message.contains('bad_network_name')) {
     return NetworkStorageError.missingShare;
+  }
+  if (error is SmbException) {
+    return switch (error.type) {
+      SmbErrorType.connection => NetworkStorageError.unreachable,
+      SmbErrorType.timeout => NetworkStorageError.timeout,
+      SmbErrorType.auth => NetworkStorageError.authentication,
+      SmbErrorType.accessDenied => NetworkStorageError.permission,
+      SmbErrorType.fileNotFound ||
+      SmbErrorType.notADirectory => NetworkStorageError.missingShare,
+      SmbErrorType.invalidParam => NetworkStorageError.invalidAddress,
+      SmbErrorType.incompatible => NetworkStorageError.incompatible,
+      SmbErrorType.unknown => NetworkStorageError.unknown,
+    };
   }
   if (error is Smb2Exception) {
     // A worker-start failure can wrap the native exception as text. Recover

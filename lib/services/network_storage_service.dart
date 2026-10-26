@@ -16,6 +16,8 @@ import 'package:mornye/services/network_certificate.dart';
 import 'package:mornye/services/network_smb_client.dart';
 import 'package:mornye/services/platform_bridge.dart';
 import 'package:mornye/services/secure_storage_options.dart';
+import 'package:mornye/services/smb/smb_client.dart';
+import 'package:mornye/services/smb/v1/smb1_client.dart';
 import 'package:xml/xml.dart';
 
 part 'network_storage_upload.dart';
@@ -85,12 +87,14 @@ class NetworkConnection {
     this.trustedCertificateSha256,
     this.subsonicAuth = SubsonicAuth.saltedToken,
     this.apiKey = '',
+    this.smb1 = false,
   });
   final String id, name, address, username, password, domain;
   final NetworkProtocol protocol;
   final String? trustedCertificateSha256;
   final SubsonicAuth subsonicAuth;
   final String apiKey;
+  final bool smb1;
   bool get writable =>
       protocol == NetworkProtocol.smb || protocol == NetworkProtocol.webdav;
   Uri get root => Uri.parse(address);
@@ -102,6 +106,7 @@ class NetworkConnection {
     'username': username,
     'password': password,
     'domain': domain,
+    if (smb1) 'smb1': true,
     if (protocol == NetworkProtocol.subsonic) ...{
       'subsonicAuth': subsonicAuth.name,
       'apiKey': apiKey,
@@ -123,6 +128,7 @@ class NetworkConnection {
           json['subsonicAuth'] as String? ?? 'saltedToken',
         ),
         apiKey: json['apiKey'] as String? ?? '',
+        smb1: json['smb1'] as bool? ?? false,
       );
 
   void validate() {
@@ -133,6 +139,7 @@ class NetworkConnection {
         root.hasFragment ||
         root.pathSegments.any((s) => s == '..') ||
         (root.hasQuery && protocol != NetworkProtocol.http) ||
+        (smb1 && protocol != NetworkProtocol.smb) ||
         (protocol == NetworkProtocol.smb
             ? root.scheme != 'smb' ||
                   (root.hasPort && (root.port < 1 || root.port > 65535))
@@ -362,6 +369,7 @@ class NetworkStorageService {
             ? connection.id
             : connection.domain,
         target.pathSegments,
+        if (connection.smb1) 'smb1',
       ]);
       return 'network-file:${sha256.convert(utf8.encode(identity))}';
     } on FormatException {
@@ -399,16 +407,24 @@ class NetworkStorageService {
     return 'http://127.0.0.1:${server.port}/$token';
   }
 
-  Future<NetworkSmbClient> _smb(NetworkConnection c, Uri target) async {
+  Future<SmbClient> _smb(NetworkConnection c, Uri target) async {
     await _ensureAccess(target);
     var expired = false;
-    final pending = NetworkSmbClient.connect(
-      target,
-      username: c.username,
-      password: c.password,
-      domain: c.domain,
-      timeout: timeout,
-    );
+    final pending = c.smb1
+        ? Smb1Client.connect(
+            target,
+            username: c.username,
+            password: c.password,
+            domain: c.domain,
+            timeout: timeout,
+          )
+        : NetworkSmbClient.connect(
+            target,
+            username: c.username,
+            password: c.password,
+            domain: c.domain,
+            timeout: timeout,
+          );
     unawaited(
       pending
           .then((smb) async {
@@ -617,13 +633,21 @@ class NetworkStorageService {
     if (c.protocol == NetworkProtocol.smb) {
       if (target.pathSegments.every((s) => s.isEmpty)) {
         await _ensureAccess(target);
-        final shares = await NetworkSmbClient.shares(
-          target,
-          username: c.username,
-          password: c.password,
-          domain: c.domain,
-          timeout: timeout,
-        ).timeout(timeout);
+        final shares = await (c.smb1
+            ? Smb1Client.shares(
+                target,
+                username: c.username,
+                password: c.password,
+                domain: c.domain,
+                timeout: timeout,
+              )
+            : NetworkSmbClient.shares(
+                target,
+                username: c.username,
+                password: c.password,
+                domain: c.domain,
+                timeout: timeout,
+              )).timeout(timeout);
         return _sorted([
           for (final share in shares)
             if (share.isDisk)
@@ -631,7 +655,7 @@ class NetworkStorageService {
         ]);
       }
       final smb = await _smb(c, target);
-      final List<Smb2DirEntry> files;
+      final List<dynamic> files;
       try {
         files = await smb.list().timeout(timeout);
       } finally {
@@ -689,19 +713,27 @@ class NetworkStorageService {
   /// Large SMB listings arrive from native I/O as plain stat objects. Transfer
   /// only fields used by browsing and incremental Library scans.
   static Future<List<NetworkEntry>> prepareSmbEntries(
-    List<Smb2DirEntry> files,
+    List<dynamic> files,
     String path,
   ) async {
     final input = (
       path: path,
       files: [
         for (final file in files)
-          (
-            name: file.name,
-            directory: file.stat.isDirectory,
-            size: file.stat.size,
-            modifiedTime: file.stat.modified.millisecondsSinceEpoch,
-          ),
+          if (file is SmbEntry)
+            (
+              name: file.name,
+              directory: file.isDirectory,
+              size: file.size,
+              modifiedTime: file.modifiedTime,
+            )
+          else if (file is Smb2DirEntry)
+            (
+              name: file.name,
+              directory: file.stat.isDirectory,
+              size: file.stat.size,
+              modifiedTime: file.stat.modified.millisecondsSinceEpoch,
+            ),
       ],
     );
     // Small lists are cheaper inline; large sorts must leave the UI isolate.
@@ -880,7 +912,7 @@ class NetworkStorageService {
   }
 
   Future<void> _serve(HttpRequest request) async {
-    NetworkSmbClient? smb;
+    SmbClient? smb;
     try {
       final route = _routes[request.uri.path.replaceFirst('/', '')];
       if (route == null || !['GET', 'HEAD'].contains(request.method)) {
