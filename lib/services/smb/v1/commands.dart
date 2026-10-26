@@ -178,6 +178,9 @@ class Smb1Commands {
 
     return Smb1Packet(
       command: Smb1Packet.cmdSessionSetupAndX,
+      flags2: Smb1Packet.flag2Unicode |
+          Smb1Packet.flag2NtStatus |
+          Smb1Packet.flag2ExtendedSecurity,
       uid: uid,
       words: words,
       bytes: bytes,
@@ -284,10 +287,10 @@ class Smb1Commands {
   }) {
     // path is e.g. \\HOST\SHARE
     final unicodePath = _encodeUnicodeString(path);
-    final service = [
-      ...'?????'.codeUnits,
-      0x00,
-    ]; // Any service (disk, print, IPC)
+    final isIpc = path.toUpperCase().endsWith(r'\IPC$');
+    final service = isIpc
+        ? [...'IPC'.codeUnits, 0x00]
+        : [...'?????'.codeUnits, 0x00];
 
     final bytes = Uint8List(1 + unicodePath.length + service.length);
     bytes[0] = 0x00; // Null password byte
@@ -300,7 +303,7 @@ class Smb1Commands {
       words: [
         0x00FF, // AndXCommand
         0x0000, // AndXOffset
-        0x0008, // Flags: disconnect TID if required
+        0x0000, // Flags: 0 (no extended response required)
         0x0001, // PasswordLength: 1
       ],
       bytes: bytes,
@@ -330,35 +333,45 @@ class Smb1Commands {
     final unicodePath = _encodeUnicodeString(fullPath);
 
     final desiredAccess = write ? 0x0012019F : 0x00120089;
+    final extFileAttrs = directory ? 0x00000010 : (write ? 0x00000080 : 0);
     final createOptions = directory ? 0x00000001 : 0x00000040;
 
-    final words = [
-      0x00FF, // AndXCommand
-      0x0000, // AndXOffset
-      0x0000, // Reserved
-      fullPath.length * 2, // NameLength in bytes
-      0x0016, // Flags
-      0x0000, // RootDirectoryFID low
-      0x0000, // RootDirectoryFID high
-      desiredAccess & 0xFFFF,
-      (desiredAccess >> 16) & 0xFFFF,
-      0, 0, 0, 0, // AllocationSize (8 bytes)
-      0x0080, 0x0000, // FileAttributes: FILE_ATTRIBUTE_NORMAL
-      0x0007, 0x0000, // ShareAccess: Read/Write/Delete
-      disposition & 0xFFFF,
-      (disposition >> 16) & 0xFFFF,
-      createOptions & 0xFFFF,
-      (createOptions >> 16) & 0xFFFF,
-      0x0002, 0x0000, // SecurityFlags: Impersonation
-      0x0000, // SecurityFlags
-    ];
+    // MS-CIFS 2.2.4.64.1: SMB_COM_NT_CREATE_ANDX Request (48 bytes = 24 words)
+    final wordBytes = Uint8List(48);
+    final wBd = ByteData.sublistView(wordBytes);
+    wBd.setUint8(0, 0xFF); // AndXCommand
+    wBd.setUint8(1, 0); // AndXReserved
+    wBd.setUint16(2, 0, Endian.little); // AndXOffset
+    wBd.setUint8(4, 0); // Reserved
+    wBd.setUint16(5, unicodePath.length, Endian.little); // NameLength in bytes
+    wBd.setUint32(7, 0x00000016, Endian.little); // Flags
+    wBd.setUint32(11, 0, Endian.little); // RootDirectoryFID
+    wBd.setUint32(15, desiredAccess, Endian.little); // DesiredAccess
+    wBd.setUint64(19, 0, Endian.little); // AllocationSize
+    wBd.setUint32(27, extFileAttrs, Endian.little); // ExtFileAttributes
+    wBd.setUint32(31, 0x00000007, Endian.little); // ShareAccess: Read/Write/Delete
+    wBd.setUint32(35, disposition, Endian.little); // CreateDisposition
+    wBd.setUint32(39, createOptions, Endian.little); // CreateOptions
+    wBd.setUint32(43, 0x00000002, Endian.little); // ImpersonationLevel
+    wBd.setUint8(47, 0); // SecurityFlags
+
+    final words = Uint16List(24);
+    for (var i = 0; i < 24; i++) {
+      words[i] = wBd.getUint16(i * 2, Endian.little);
+    }
+
+    // SMB Header (32) + WordCount (1) + 24 words (48) + ByteCount (2) = 83 bytes.
+    // 83 is odd; add 1 pad byte so Name begins on a 2-byte boundary (offset 84)
+    final bytes = Uint8List(1 + unicodePath.length);
+    bytes[0] = 0x00; // Pad byte
+    bytes.setRange(1, bytes.length, unicodePath);
 
     return Smb1Packet(
       command: Smb1Packet.cmdNtCreateAndX,
       tid: tid,
       uid: uid,
       words: words,
-      bytes: unicodePath,
+      bytes: bytes,
     );
   }
 
@@ -369,18 +382,20 @@ class Smb1Commands {
     required int tid,
     required int uid,
   }) {
+    // MS-CIFS 2.2.4.42.1: WordCount = 12 (64-bit offset)
     final words = [
-      0x00FF, // AndXCommand
-      0x0000, // AndXOffset
-      fid,
-      offset & 0xFFFF,
-      (offset >> 16) & 0xFFFF,
-      length & 0xFFFF,
-      0, // MinCount
-      0, // MaxCountHigh
-      0, // Remaining
-      (offset ~/ 0x100000000) & 0xFFFF,
-      ((offset ~/ 0x100000000) >> 16) & 0xFFFF,
+      0x00FF, // 0: AndXCommand
+      0x0000, // 1: AndXOffset
+      fid,    // 2: FID
+      offset & 0xFFFF, // 3: OffsetLow
+      (offset >> 16) & 0xFFFF, // 4: OffsetHigh (32-bit)
+      length & 0xFFFF, // 5: MaxCountOfBytesToReturn
+      0, // 6: MinCountOfBytesToReturn
+      0, // 7: Timeout low
+      0, // 8: Timeout high
+      0, // 9: Remaining
+      (offset ~/ 0x100000000) & 0xFFFF, // 10: OffsetHigh64 low
+      ((offset ~/ 0x100000000) >> 16) & 0xFFFF, // 11: OffsetHigh64 high
     ];
 
     return Smb1Packet(
@@ -398,28 +413,36 @@ class Smb1Commands {
     required int tid,
     required int uid,
   }) {
+    // MS-CIFS 2.2.4.43.1: WordCount = 14 (64-bit offset)
+    // Header (32) + WordCount (1) + 14 words (28) + ByteCount (2) = 63 bytes.
+    // Pad byte at offset 63 aligns data to offset 64 (0x0040).
     final words = [
-      0x00FF, // AndXCommand
-      0x0000, // AndXOffset
-      fid,
-      offset & 0xFFFF,
-      (offset >> 16) & 0xFFFF,
-      0, // Reserved
-      0, // WriteMode
-      0, // Remaining
-      0, // DataLengthHigh
-      data.length & 0xFFFF,
-      0x003F, // DataOffset (header + words + byteCount)
-      (offset ~/ 0x100000000) & 0xFFFF,
-      ((offset ~/ 0x100000000) >> 16) & 0xFFFF,
+      0x00FF, // 0: AndXCommand
+      0x0000, // 1: AndXOffset
+      fid,    // 2: FID
+      offset & 0xFFFF, // 3: OffsetLow
+      (offset >> 16) & 0xFFFF, // 4: OffsetHigh (32-bit)
+      0, // 5: Timeout low
+      0, // 6: Timeout high
+      0, // 7: WriteMode
+      0, // 8: Remaining
+      0, // 9: DataLengthHigh
+      data.length & 0xFFFF, // 10: DataLength
+      0x0040, // 11: DataOffset (64)
+      (offset ~/ 0x100000000) & 0xFFFF, // 12: OffsetHigh64 low
+      ((offset ~/ 0x100000000) >> 16) & 0xFFFF, // 13: OffsetHigh64 high
     ];
+
+    final bytes = Uint8List(1 + data.length);
+    bytes[0] = 0; // Pad byte at offset 63
+    bytes.setRange(1, bytes.length, data);
 
     return Smb1Packet(
       command: Smb1Packet.cmdWriteAndX,
       tid: tid,
       uid: uid,
       words: words,
-      bytes: data,
+      bytes: bytes,
     );
   }
 
@@ -580,33 +603,40 @@ class Smb1Commands {
     Uint8List? data,
   }) {
     final d = data ?? Uint8List(0);
-    const paramOffset = 68; // Standard header (32) + words (15*2+1) + byteCount (2) + padding
-    final dataOffset = paramOffset + parameters.length;
+    // Header (32) + WordCount (1) + 15 words (30) + ByteCount (2) = 65 bytes.
+    // bytes[0] is pad byte at offset 65 so parameters start at offset 66 (even).
+    const paramOffset = 66;
+    var dataOffset = paramOffset + parameters.length;
+    var padData = 0;
+    if (d.isNotEmpty && (dataOffset % 2 != 0)) {
+      padData = 1;
+      dataOffset += 1;
+    }
 
+    // MS-CIFS 2.2.4.46.1: WordCount = 14 + SetupCount = 15 words
     final words = [
-      parameters.length, // TotalParameterCount
-      d.length, // TotalDataCount
-      10, // MaxParameterCount
-      65535, // MaxDataCount
-      0, // MaxSetupCount
-      0, // Reserved
-      0, // Flags
-      0, // Timeout low
-      0, // Timeout high
-      0, // Reserved
-      parameters.length, // ParameterCount
-      paramOffset, // ParameterOffset
-      d.length, // DataCount
-      dataOffset, // DataOffset
-      1, // SetupCount
-      subcommand, // Setup0: Subcommand
+      parameters.length, // 0: TotalParameterCount
+      d.length, // 1: TotalDataCount
+      10, // 2: MaxParameterCount
+      65535, // 3: MaxDataCount
+      0, // 4: MaxSetupCount (low) | Reserved1 (high)
+      0, // 5: Flags
+      0, 0, // 6, 7: Timeout (ULONG: 2 words)
+      0, // 8: Reserved2
+      parameters.length, // 9: ParameterCount
+      paramOffset, // 10: ParameterOffset
+      d.length, // 11: DataCount
+      dataOffset, // 12: DataOffset
+      1, // 13: SetupCount (1) | Reserved3 (0)
+      subcommand, // 14: Setup0: Subcommand
     ];
 
-    final bytes = Uint8List(parameters.length + d.length + 1);
-    bytes[0] = 0; // Pad byte
+    final totalBytes = 1 + parameters.length + padData + d.length;
+    final bytes = Uint8List(totalBytes);
+    bytes[0] = 0; // Pad byte at offset 65
     bytes.setRange(1, 1 + parameters.length, parameters);
     if (d.isNotEmpty) {
-      bytes.setRange(1 + parameters.length, bytes.length, d);
+      bytes.setRange(1 + parameters.length + padData, totalBytes, d);
     }
 
     return Smb1Packet(
@@ -632,15 +662,18 @@ class Smb1Commands {
     }
 
     final pWords = packet.words;
-    final paramOffset = pWords[3];
-    final paramCount = pWords[4];
+    // MS-CIFS 2.2.4.46.2: Response Words
+    // words[3] = ParameterCount, words[4] = ParameterOffset
+    // words[6] = DataCount, words[7] = DataOffset
+    final paramCount = pWords[3];
+    final paramOffset = pWords[4];
+    final dataCount = pWords[6];
     final dataOffset = pWords[7];
-    final dataCount = pWords[8];
 
     var sid = 0;
     var endOfSearch = true;
 
-    final raw = packet.encode();
+    final raw = packet.raw ?? packet.encode();
     if (paramCount >= 6 && paramOffset + 6 <= raw.length) {
       final pBd = ByteData.sublistView(raw, paramOffset, paramOffset + paramCount);
       sid = pBd.getUint16(0, Endian.little);

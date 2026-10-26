@@ -19,7 +19,8 @@ class Smb1Shares {
     const dataDesc = 'B13BWz\x00';
 
     final paramBuilder = BytesBuilder(copy: false);
-    final pHeader = Uint8List(8);
+    // MS-RAP 2.5.5.2: FunctionCode is USHORT (2 bytes) = 0x0000
+    final pHeader = Uint8List(2);
     final pHBd = ByteData.sublistView(pHeader);
     pHBd.setUint16(0, 0, Endian.little); // NetShareEnum (function 0)
     paramBuilder.add(pHeader);
@@ -35,22 +36,25 @@ class Smb1Shares {
     final paramBytes = paramBuilder.takeBytes();
     final pipeBytes = ascii.encode(pipeName);
 
-    const paramOffset = 66 + pipeName.length;
+    // Header (32) + WordCount (1) + 14 words (28) + ByteCount (2) = 63.
+    // pipeBytes length = 13.
+    // 63 + 13 = 76 (even).
+    const paramOffset = 76;
+    // MS-CIFS 2.2.4.33.1: WordCount = 14 words (SetupCount = 0)
     final words = [
-      paramBytes.length, // TotalParameterCount
-      0, // TotalDataCount
-      10, // MaxParameterCount
-      65535, // MaxDataCount
-      0, // MaxSetupCount
-      0, // Reserved
-      0, // Flags
-      0, 0, // Timeout
-      0, // Reserved
-      paramBytes.length, // ParameterCount
-      paramOffset, // ParameterOffset
-      0, // DataCount
-      paramOffset + paramBytes.length, // DataOffset
-      0, // SetupCount
+      paramBytes.length, // 0: TotalParameterCount
+      0, // 1: TotalDataCount
+      10, // 2: MaxParameterCount
+      65535, // 3: MaxDataCount
+      0, // 4: MaxSetupCount (low) | Reserved1 (high)
+      0, // 5: Flags
+      0, 0, // 6, 7: Timeout (ULONG: 2 words)
+      0, // 8: Reserved2
+      paramBytes.length, // 9: ParameterCount
+      paramOffset, // 10: ParameterOffset
+      0, // 11: DataCount
+      paramOffset + paramBytes.length, // 12: DataOffset
+      0, // 13: SetupCount (0) | Reserved3 (0)
     ];
 
     final bytes = Uint8List(pipeBytes.length + paramBytes.length);
@@ -75,11 +79,12 @@ class Smb1Shares {
     }
     if (packet.words.length < 10) return [];
 
-    final raw = packet.encode();
-    final paramOffset = packet.words[3];
-    final paramCount = packet.words[4];
+    final raw = packet.raw ?? packet.encode();
+    // MS-CIFS 2.2.4.33.2: words[3]=ParamCount, words[4]=ParamOffset, words[6]=DataCount, words[7]=DataOffset
+    final paramCount = packet.words[3];
+    final paramOffset = packet.words[4];
+    final dataCount = packet.words[6];
     final dataOffset = packet.words[7];
-    final dataCount = packet.words[8];
 
     var entryCount = 0;
     if (paramCount >= 8 && paramOffset + 8 <= raw.length) {

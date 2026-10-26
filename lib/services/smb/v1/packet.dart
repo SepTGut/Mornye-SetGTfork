@@ -8,7 +8,7 @@ class Smb1Packet {
     required this.command,
     this.status = 0,
     this.flags = flagCaseInsensitive | flagCanonicalizedPaths,
-    this.flags2 = flag2Unicode | flag2NtStatus | flag2ExtendedSecurity,
+    this.flags2 = flag2Unicode | flag2NtStatus,
     this.pidHigh = 0,
     Uint8List? securityFeatures,
     this.reserved = 0,
@@ -18,9 +18,12 @@ class Smb1Packet {
     this.mid = 0,
     List<int>? words,
     Uint8List? bytes,
+    this.raw,
   })  : securityFeatures = securityFeatures ?? Uint8List(8),
         words = words != null ? Uint16List.fromList(words) : Uint16List(0),
         bytes = bytes ?? Uint8List(0);
+
+  final Uint8List? raw;
 
   // Flags
   static const int flagCaseInsensitive = 0x08;
@@ -136,6 +139,7 @@ class Smb1Packet {
         pidLow: pidLow,
         uid: uid,
         mid: mid,
+        raw: raw,
       );
     }
 
@@ -172,6 +176,7 @@ class Smb1Packet {
       mid: mid,
       words: words,
       bytes: bytes,
+      raw: raw,
     );
   }
 }

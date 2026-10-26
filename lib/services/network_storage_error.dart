@@ -41,6 +41,19 @@ NetworkStorageError classifyNetworkStorageError(Object error) {
   if (error is TimeoutException) return NetworkStorageError.timeout;
   if (error is SocketException) return NetworkStorageError.unreachable;
   if (error is FormatException) return NetworkStorageError.invalidAddress;
+  if (error is SmbException && error.type != SmbErrorType.unknown) {
+    return switch (error.type) {
+      SmbErrorType.connection => NetworkStorageError.unreachable,
+      SmbErrorType.timeout => NetworkStorageError.timeout,
+      SmbErrorType.auth => NetworkStorageError.authentication,
+      SmbErrorType.accessDenied => NetworkStorageError.permission,
+      SmbErrorType.fileNotFound ||
+      SmbErrorType.notADirectory => NetworkStorageError.missingShare,
+      SmbErrorType.invalidParam => NetworkStorageError.invalidAddress,
+      SmbErrorType.incompatible => NetworkStorageError.incompatible,
+      SmbErrorType.unknown => NetworkStorageError.unknown,
+    };
+  }
   final message = switch (error) {
     SmbException(:final message) => message,
     Smb2Exception(:final message) => message,

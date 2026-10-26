@@ -21,6 +21,7 @@ class NtlmContext {
   static const int flagNegotiateUnicode = 0x00000001;
   static const int flagNegotiateOem = 0x00000002;
   static const int flagRequestTarget = 0x00000004;
+  static const int flagNegotiateAnonymous = 0x00000800;
   static const int flagNegotiateNtlm = 0x00000200;
   static const int flagNegotiateAlwaysSign = 0x00008000;
   static const int flagNegotiateExtendedSecurity = 0x00080000;
@@ -80,6 +81,59 @@ class NtlmContext {
       throw const SmbException(
         'Invalid NTLMSSP Type 2 message',
         SmbErrorType.auth,
+      );
+    }
+
+    if (username.isEmpty && password.isEmpty) {
+      // MS-NLMP Section 3.2.5.1.2: Anonymous NTLMSSP Type 3 message
+      const headerLen = 64;
+      final out = Uint8List(headerLen);
+      final bd = ByteData.sublistView(out);
+
+      // Signature & Message Type
+      out.setRange(0, 8, _signature.codeUnits);
+      bd.setUint32(8, 3, Endian.little);
+
+      // LM response buffer (empty)
+      bd.setUint16(12, 0, Endian.little);
+      bd.setUint16(14, 0, Endian.little);
+      bd.setUint32(16, headerLen, Endian.little);
+
+      // NT response buffer (empty)
+      bd.setUint16(20, 0, Endian.little);
+      bd.setUint16(22, 0, Endian.little);
+      bd.setUint32(24, headerLen, Endian.little);
+
+      // Domain buffer (empty)
+      bd.setUint16(28, 0, Endian.little);
+      bd.setUint16(30, 0, Endian.little);
+      bd.setUint32(32, headerLen, Endian.little);
+
+      // User buffer (empty)
+      bd.setUint16(36, 0, Endian.little);
+      bd.setUint16(38, 0, Endian.little);
+      bd.setUint32(40, headerLen, Endian.little);
+
+      // Workstation buffer (empty)
+      bd.setUint16(44, 0, Endian.little);
+      bd.setUint16(46, 0, Endian.little);
+      bd.setUint32(48, headerLen, Endian.little);
+
+      // Session key buffer (empty)
+      bd.setUint16(52, 0, Endian.little);
+      bd.setUint16(54, 0, Endian.little);
+      bd.setUint32(56, headerLen, Endian.little);
+
+      // Negotiated Flags with ANONYMOUS bit
+      const anonFlags = flagNegotiateUnicode |
+          flagNegotiateNtlm |
+          flagNegotiateExtendedSecurity |
+          flagNegotiateAnonymous;
+      bd.setUint32(60, anonFlags, Endian.little);
+
+      return NtlmResult(
+        authenticateMessage: out,
+        sessionBaseKey: Uint8List(16),
       );
     }
 

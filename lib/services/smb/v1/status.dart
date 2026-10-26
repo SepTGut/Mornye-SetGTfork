@@ -26,6 +26,7 @@ class NtStatus {
   static const int invalidParameter = 0xC000000D;
   static const int invalidHandle = 0xC0000008;
   static const int noLogonServers = 0xC000005E;
+  static const int notSupported = 0xC00000BB;
   static const int networkNameDeleted = 0xC00000C9;
   static const int connectionDisconnected = 0xC000020C;
   static const int connectionReset = 0xC000020D;
@@ -78,6 +79,7 @@ class NtStatus {
     invalidParameter => 'STATUS_INVALID_PARAMETER',
     invalidHandle => 'STATUS_INVALID_HANDLE',
     noLogonServers => 'STATUS_NO_LOGON_SERVERS',
+    notSupported => 'STATUS_NOT_SUPPORTED',
     _ => 'NTSTATUS 0x${status.toRadixString(16).padLeft(8, '0')}',
   };
 }

@@ -115,13 +115,17 @@ class Smb1Client implements SmbClient {
         uid = setup2Resp.uid;
 
         if (setup2Resp.status != NtStatus.success) {
+          final errorType = (setup2Resp.status == NtStatus.notSupported)
+              ? SmbErrorType.auth
+              : NtStatus.toSmbErrorType(setup2Resp.status);
           throw SmbException(
             'Authentication failed: ${NtStatus.describe(setup2Resp.status)}',
-            NtStatus.toSmbErrorType(setup2Resp.status),
+            errorType,
           );
         }
 
-        if (negResult.signingRequired || negResult.signingEnabled) {
+        if ((negResult.signingRequired || negResult.signingEnabled) &&
+            (username.isNotEmpty || password.isNotEmpty)) {
           signer = Smb1Signer(
             macKey: ntlmResult.sessionBaseKey,
             required: negResult.signingRequired,
@@ -148,9 +152,12 @@ class Smb1Client implements SmbClient {
         uid = setupResp.uid;
 
         if (setupResp.status != NtStatus.success) {
+          final errorType = (setupResp.status == NtStatus.notSupported)
+              ? SmbErrorType.auth
+              : NtStatus.toSmbErrorType(setupResp.status);
           throw SmbException(
             'Authentication failed: ${NtStatus.describe(setupResp.status)}',
-            NtStatus.toSmbErrorType(setupResp.status),
+            errorType,
           );
         }
       }
