@@ -1,6 +1,8 @@
 import 'dart:typed_data';
 
 import 'package:mornye/services/smb/smb_client.dart';
+import 'package:mornye/services/smb/v1/des.dart';
+import 'package:mornye/services/smb/v1/md4.dart';
 import 'package:mornye/services/smb/v1/packet.dart';
 import 'package:mornye/services/smb/v1/status.dart';
 
@@ -116,7 +118,8 @@ class Smb1Commands {
     } else {
       // Non-extended: bytes contain encryption challenge key (8 bytes) + domain string
       if (packet.bytes.isNotEmpty) {
-        securityBlob = packet.bytes;
+        final challengeLen = packet.bytes.length >= 8 ? 8 : packet.bytes.length;
+        securityBlob = Uint8List.sublistView(packet.bytes, 0, challengeLen);
       }
     }
 
@@ -175,6 +178,100 @@ class Smb1Commands {
 
     return Smb1Packet(
       command: Smb1Packet.cmdSessionSetupAndX,
+      uid: uid,
+      words: words,
+      bytes: bytes,
+    );
+  }
+
+  /// Creates a standard SMB1 Session Setup AndX request (WordCount = 13) for servers
+  /// without Extended Security (CAP_EXTENDED_SECURITY / NTLMSSP).
+  static Smb1Packet createStandardSessionSetupRequest({
+    required String username,
+    required String password,
+    required String domain,
+    required Uint8List serverChallenge,
+    int uid = 0,
+    int maxBufferSize = 65535,
+    bool unicode = true,
+  }) {
+    const caps = capUnicode |
+        capLargeFiles |
+        capNtSmbs |
+        capStatus32;
+
+    Uint8List ciPassword;
+    Uint8List csPassword;
+
+    if (username.isEmpty && password.isEmpty) {
+      // Anonymous / Guest logon
+      ciPassword = Uint8List(0);
+      csPassword = Uint8List(0);
+    } else {
+      if (serverChallenge.length >= 8) {
+        final challenge8 = Uint8List.sublistView(serverChallenge, 0, 8);
+        ciPassword = Des.computeLmV1Response(challenge8, password);
+
+        final pwUnits = password.codeUnits;
+        final pwUtf16 = Uint8List(pwUnits.length * 2);
+        final bd = ByteData.sublistView(pwUtf16);
+        for (var i = 0; i < pwUnits.length; i++) {
+          bd.setUint16(i * 2, pwUnits[i], Endian.little);
+        }
+        final ntHash = Md4.digest(pwUtf16);
+        csPassword = Des.computeNtlmV1Response(challenge8, ntHash);
+      } else {
+        ciPassword = Uint8List(0);
+        csPassword = Uint8List(0);
+      }
+    }
+
+    final words = [
+      0x00FF, // AndXCommand: 0xFF, AndXReserved: 0
+      0x0000, // AndXOffset
+      maxBufferSize & 0xFFFF,
+      2, // MaxMpxCount
+      1, // VcNumber
+      0, // SessionKey low
+      0, // SessionKey high
+      ciPassword.length, // CaseInsensitivePasswordLength
+      csPassword.length, // CaseSensitivePasswordLength
+      0, // Reserved low
+      0, // Reserved high
+      caps & 0xFFFF, // Capabilities low
+      (caps >> 16) & 0xFFFF, // Capabilities high
+    ];
+
+    final builder = BytesBuilder(copy: false);
+    builder.add(ciPassword);
+    builder.add(csPassword);
+
+    // Padding for 2-byte alignment relative to SMB header
+    // SMB header (32) + WordCount (1) + 13 words (26) + ByteCount (2) = 61
+    final currentOffset = 61 + ciPassword.length + csPassword.length;
+    if (unicode && (currentOffset % 2 != 0)) {
+      builder.addByte(0x00);
+    }
+
+    if (unicode) {
+      builder.add(_encodeUnicodeString(username));
+      builder.add(_encodeUnicodeString(domain));
+      builder.add(_encodeUnicodeString('Dart'));
+      builder.add(_encodeUnicodeString('Mornye'));
+    } else {
+      builder.add(_encodeAsciiString(username));
+      builder.add(_encodeAsciiString(domain));
+      builder.add(_encodeAsciiString('Dart'));
+      builder.add(_encodeAsciiString('Mornye'));
+    }
+
+    final bytes = builder.takeBytes();
+
+    return Smb1Packet(
+      command: Smb1Packet.cmdSessionSetupAndX,
+      flags2: unicode
+          ? (Smb1Packet.flag2Unicode | Smb1Packet.flag2NtStatus)
+          : Smb1Packet.flag2NtStatus,
       uid: uid,
       words: words,
       bytes: bytes,
@@ -599,6 +696,10 @@ class Smb1Commands {
     }
     bd.setUint16(units.length * 2, 0, Endian.little);
     return out;
+  }
+
+  static Uint8List _encodeAsciiString(String text) {
+    return Uint8List.fromList([...text.codeUnits, 0x00]);
   }
 
   static String _decodeUnicodeString(Uint8List bytes) {

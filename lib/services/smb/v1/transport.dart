@@ -24,17 +24,35 @@ class Smb1Transport {
     int port, {
     required Duration timeout,
     String? calledName,
+    bool fallbackToNetBios = true,
   }) async {
-    final socket = await Socket.connect(host, port, timeout: timeout);
-    socket.setOption(SocketOption.tcpNoDelay, true);
+    try {
+      final socket = await Socket.connect(host, port, timeout: timeout);
+      socket.setOption(SocketOption.tcpNoDelay, true);
 
-    if (port == netBiosPort) {
-      await _negotiateNetBios(socket, calledName ?? '*SMBSERVER', timeout);
+      if (port == netBiosPort) {
+        await _negotiateNetBios(socket, calledName ?? '*SMBSERVER', timeout);
+      }
+
+      final transport = Smb1Transport._(socket);
+      transport._startListening();
+      return transport;
+    } catch (e) {
+      if (fallbackToNetBios && port == defaultPort) {
+        try {
+          return await connect(
+            host,
+            netBiosPort,
+            timeout: timeout,
+            calledName: calledName,
+            fallbackToNetBios: false,
+          );
+        } catch (_) {
+          rethrow;
+        }
+      }
+      rethrow;
     }
-
-    final transport = Smb1Transport._(socket);
-    transport._startListening();
-    return transport;
   }
 
   static Future<void> _negotiateNetBios(

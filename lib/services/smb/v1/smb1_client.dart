@@ -128,10 +128,31 @@ class Smb1Client implements SmbClient {
           );
         }
       } else {
-        throw const SmbException(
-          'Server does not support extended security (NTLMSSP)',
-          SmbErrorType.incompatible,
+        // Standard SMB1 Session Setup (NTLMv1 / LMv1 / Anonymous)
+        final challenge = negResult.securityBlob;
+        if (challenge.isEmpty && (username.isNotEmpty || password.isNotEmpty)) {
+          throw const SmbException(
+            'Server did not provide authentication challenge',
+            SmbErrorType.auth,
+          );
+        }
+
+        final setupReq = Smb1Commands.createStandardSessionSetupRequest(
+          username: username,
+          password: password,
+          domain: domain,
+          serverChallenge: challenge,
+          maxBufferSize: negResult.maxBufferSize,
         );
+        final setupResp = await roundTrip(setupReq);
+        uid = setupResp.uid;
+
+        if (setupResp.status != NtStatus.success) {
+          throw SmbException(
+            'Authentication failed: ${NtStatus.describe(setupResp.status)}',
+            NtStatus.toSmbErrorType(setupResp.status),
+          );
+        }
       }
 
       // 3. Tree Connect
