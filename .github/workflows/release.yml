@@ -52,7 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: get-version
     env:
-      MORNYE_DISCORD_SDK: "1"
+      MORNYE_DISCORD_SDK: ${{ secrets.DISCORD_MOBILE_SDK_PASSPHRASE != '' && '1' || '0' }}
 
     steps:
       - name: Free disk space
@@ -148,7 +148,11 @@ jobs:
 
       - name: Build release APKs
         run: |
-          bash scripts/build_android.sh --production --target lib/main.dart
+          if [[ "${MORNYE_DISCORD_SDK:-0}" == "1" ]]; then
+            bash scripts/build_android.sh --production --target lib/main.dart
+          else
+            bash scripts/build_android.sh --lite --target lib/main.dart
+          fi
           ls -la build/app/outputs/flutter-apk/
 
       - name: Sign and verify release APKs (V1/V2/V3/V4)
@@ -160,15 +164,31 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          : "${KEYSTORE_BASE64:?Missing KEYSTORE_BASE64}"
-          : "${KEY_ALIAS:?Missing KEY_ALIAS}"
-          : "${KEYSTORE_PASSWORD:?Missing KEYSTORE_PASSWORD}"
-          export KEY_PASSWORD="${KEY_PASSWORD:-$KEYSTORE_PASSWORD}"
-
           umask 077
           signing_dir="$(mktemp -d "$RUNNER_TEMP/mornye-signing.XXXXXX")"
           trap 'rm -rf "$signing_dir"' EXIT
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$signing_dir/release.jks"
+
+          if [ -n "${KEYSTORE_BASE64:-}" ]; then
+            : "${KEY_ALIAS:?Missing KEY_ALIAS}"
+            : "${KEYSTORE_PASSWORD:?Missing KEYSTORE_PASSWORD}"
+            export KEY_PASSWORD="${KEY_PASSWORD:-$KEYSTORE_PASSWORD}"
+            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$signing_dir/release.jks"
+          else
+            echo "KEYSTORE_BASE64 is not set; generating a standalone release signing key for fork release."
+            KEY_ALIAS="release"
+            KEYSTORE_PASSWORD="mornyerelease"
+            KEY_PASSWORD="mornyerelease"
+            keytool -genkeypair -v \
+              -keystore "$signing_dir/release.jks" \
+              -alias "$KEY_ALIAS" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -storepass "$KEYSTORE_PASSWORD" \
+              -keypass "$KEY_PASSWORD" \
+              -dname "CN=Mornye, OU=Fork, O=Mornye, L=Fork, S=Fork, C=US"
+          fi
+
           apksigner="$ANDROID_HOME/build-tools/37.0.0/apksigner"
           apk_dir=build/app/outputs/flutter-apk
 
@@ -179,8 +199,8 @@ jobs:
             "$apksigner" sign \
               --ks "$signing_dir/release.jks" \
               --ks-key-alias "$KEY_ALIAS" \
-              --ks-pass env:KEYSTORE_PASSWORD \
-              --key-pass env:KEY_PASSWORD \
+              --ks-pass "pass:$KEYSTORE_PASSWORD" \
+              --key-pass "pass:$KEY_PASSWORD" \
               --v1-signing-enabled true \
               --v2-signing-enabled true \
               --v3-signing-enabled true \
@@ -218,10 +238,14 @@ jobs:
         run: |
           python3 -m unittest discover -s scripts -p 'test_check_backend_apk.py'
           apk_dir=build/app/outputs/flutter-apk
+          discord_flag=""
+          if [[ "${MORNYE_DISCORD_SDK:-0}" == "1" ]]; then
+            discord_flag="--discord-sdk"
+          fi
           python3 scripts/check_backend_apk.py "$apk_dir/Mornye-${VERSION}-arm64.apk" \
-            --backend rust --abis arm64-v8a --discord-sdk
+            --backend rust --abis arm64-v8a $discord_flag
           python3 scripts/check_backend_apk.py "$apk_dir/Mornye-${VERSION}-arm32.apk" \
-            --backend rust --abis armeabi-v7a --discord-sdk
+            --backend rust --abis armeabi-v7a $discord_flag
           for abi in arm64 arm32; do
             "$ANDROID_HOME/build-tools/37.0.0/zipalign" -c -P 16 4 \
               "$apk_dir/Mornye-${VERSION}-${abi}.apk"
@@ -260,7 +284,7 @@ jobs:
     runs-on: macos-15
     needs: get-version # Only depends on version, NOT android build!
     env:
-      MORNYE_DISCORD_SDK: "1"
+      MORNYE_DISCORD_SDK: ${{ secrets.DISCORD_MOBILE_SDK_PASSPHRASE != '' && '1' || '0' }}
 
     steps:
       - name: Checkout repository
@@ -321,11 +345,13 @@ jobs:
       - name: Configure Rust application pods
         working-directory: ios
         run: |
-          test -f ../third_party/mornye_discord/ios/Frameworks/discord_partner_sdk.xcframework/Info.plist || {
-            echo "Production requires the official Discord SDK. Run scripts/setup_discord_sdk.sh in the build environment first." >&2
-            exit 1
-          }
-          test -f ../third_party/mornye_discord/ios/Frameworks/Discord-License-Notices.txt
+          if [[ "$MORNYE_DISCORD_SDK" == "1" ]]; then
+            test -f ../third_party/mornye_discord/ios/Frameworks/discord_partner_sdk.xcframework/Info.plist || {
+              echo "Production requires the official Discord SDK. Run scripts/setup_discord_sdk.sh in the build environment first." >&2
+              exit 1
+            }
+            test -f ../third_party/mornye_discord/ios/Frameworks/Discord-License-Notices.txt
+          fi
           pod install
 
       - name: Build iOS (unsigned)
@@ -348,15 +374,17 @@ jobs:
 
       - name: Audit Rust iOS archive before packaging
         run: |
-          app="ios/build/Runner.xcarchive/Products/Applications/Runner.app"
-          for required in \
-            Frameworks/discord_partner_sdk.framework/discord_partner_sdk \
-            Frameworks/mornye_discord.framework/Discord-License-Notices.txt; do
-            test -s "$app/$required" || {
-              echo "Required Discord file missing or empty: $app/$required" >&2
-              exit 1
-            }
-          done
+          if [[ "$MORNYE_DISCORD_SDK" == "1" ]]; then
+            app="ios/build/Runner.xcarchive/Products/Applications/Runner.app"
+            for required in \
+              Frameworks/discord_partner_sdk.framework/discord_partner_sdk \
+              Frameworks/mornye_discord.framework/Discord-License-Notices.txt; do
+              test -s "$app/$required" || {
+                echo "Required Discord file missing or empty: $app/$required" >&2
+                exit 1
+              }
+            done
+          fi
           python3 -m unittest discover -s scripts -p 'test_check_backend_ios.py'
           python3 scripts/check_backend_ios.py \
             ios/build/Runner.xcarchive/Products/Applications/Runner.app \
@@ -789,7 +817,7 @@ jobs:
     if: >-
       ${{ !cancelled()
       && needs.build-android.result == 'success'
-      && needs.build-ios.result == 'success' }}
+      && (needs.build-ios.result == 'success' || needs.build-ios.result == 'skipped' || needs.build-ios.result == 'failure') }}
     permissions:
       contents: write
 
@@ -821,6 +849,7 @@ jobs:
           path: ./release
 
       - name: Download iOS IPA
+        continue-on-error: true
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ios-ipa
@@ -902,6 +931,8 @@ jobs:
       ${{ !cancelled()
       && needs.build-macos.result == 'success'
       && needs.build-linux.result == 'success' }}
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repository
@@ -996,13 +1027,13 @@ jobs:
       - name: Create desktop release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
-          repository: mornyeapp/Mornye-Desktop
-          token: ${{ secrets.MORNYE_DESKTOP_RELEASE_TOKEN }}
+          repository: ${{ secrets.MORNYE_DESKTOP_RELEASE_TOKEN != '' && 'mornyeapp/Mornye-Desktop' || github.repository }}
+          token: ${{ secrets.MORNYE_DESKTOP_RELEASE_TOKEN != '' && secrets.MORNYE_DESKTOP_RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
           tag_name: ${{ needs.get-version.outputs.version }}
           name: Mornye ${{ needs.get-version.outputs.version }}
           body_path: /tmp/release_body.txt
           files: ./release/*
-          draft: ${{ vars.DESKTOP_RELEASES_PUBLIC != 'true' }}
+          draft: ${{ vars.DESKTOP_RELEASES_PUBLIC != 'true' && secrets.MORNYE_DESKTOP_RELEASE_TOKEN != '' }}
           prerelease: ${{ needs.get-version.outputs.is_prerelease == 'true' }}
 
   update-altstore:
@@ -1010,7 +1041,7 @@ jobs:
     needs: [get-version, build-ios, create-release]
     # !cancelled() keeps an optional build-windows failure upstream of
     # create-release from skipping this job.
-    if: ${{ !cancelled() && needs.create-release.result == 'success' && needs.get-version.outputs.is_prerelease != 'true' }}
+    if: ${{ !cancelled() && needs.create-release.result == 'success' && needs.get-version.outputs.is_prerelease != 'true' && needs.build-ios.result == 'success' }}
     permissions:
       contents: write
 
@@ -1088,7 +1119,7 @@ jobs:
   notify-telegram:
     runs-on: ubuntu-latest
     needs: [get-version, create-release]
-    if: ${{ !cancelled() && needs.create-release.result == 'success' && needs.get-version.outputs.is_prerelease != 'true' }}
+    if: ${{ !cancelled() && needs.create-release.result == 'success' && needs.get-version.outputs.is_prerelease != 'true' && secrets.TELEGRAM_BOT_TOKEN != '' }}
 
     steps:
       - name: Checkout repository

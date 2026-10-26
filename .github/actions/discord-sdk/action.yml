@@ -3,13 +3,18 @@ description: Decrypt, verify and stage the pinned Android and iOS SDK.
 inputs:
   passphrase:
     description: Decryption key supplied from an Actions repository secret.
-    required: true
+    required: false
+    default: ""
 runs:
   using: composite
   steps:
     - name: Ensure GnuPG is available
       shell: bash
       run: |
+        if [[ -z "${{ inputs.passphrase }}" ]]; then
+          echo "DISCORD_MOBILE_SDK_PASSPHRASE is not set; skipping GnuPG check."
+          exit 0
+        fi
         if ! command -v gpg >/dev/null 2>&1; then
           if [[ "$RUNNER_OS" == "macOS" ]]; then
             brew install gnupg
@@ -25,6 +30,11 @@ runs:
         DISCORD_MOBILE_SDK_PASSPHRASE: ${{ inputs.passphrase }}
       run: |
         set -euo pipefail
+        if [[ -z "${DISCORD_MOBILE_SDK_PASSPHRASE:-}" ]]; then
+          echo "DISCORD_MOBILE_SDK_PASSPHRASE is not set; skipping Discord SDK (Lite build)."
+          printf 'MORNYE_DISCORD_SDK=0\n' >> "$GITHUB_ENV"
+          exit 0
+        fi
         umask 077
         sdk_dir="$(python3 scripts/prepare_discord_sdk.py)"
         bash scripts/setup_discord_sdk.sh "$sdk_dir"
