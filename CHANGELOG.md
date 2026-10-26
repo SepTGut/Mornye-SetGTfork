@@ -1,5 +1,15 @@
 # Changelog
 
+## [5.4.0] - 2026-10-26
+
+### Added
+
+- **Folder Browsing in Library**: Hierarchical folder browser for local and downloaded audio files with recursive play/shuffle, interactive breadcrumbs, linear root collapsing, and in-folder search.
+- **Sort by Folder**: Added Folder (A–Z) and Folder (Z–A) sort options to library songs with sticky folder-based section grouping.
+- **Platform Navigation**: Integrated folder browsing across Material chips and tabs, Mornye library screen categories, and the Desktop sidebar navigation.
+
+---
+
 ## [5.3.0] - 2026-10-26
 
 ### Added
