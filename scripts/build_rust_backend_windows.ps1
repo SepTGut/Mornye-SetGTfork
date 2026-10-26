@@ -31,6 +31,9 @@ $targetDir = Join-Path $rustBackendDir 'target'
 Push-Location $rustBackendDir
 try {
     $env:CARGO_TARGET_DIR = $targetDir
+    if (Test-Path (Join-Path $env:USERPROFILE '.cargo\bin')) {
+        $env:PATH = (Join-Path $env:USERPROFILE '.cargo\bin') + ';' + $env:PATH
+    }
 
     rustup target add $Target
     if ($LASTEXITCODE -ne 0) { throw "rustup target add $Target failed." }

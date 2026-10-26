@@ -4,6 +4,8 @@ import 'package:mornye/services/library_database_models.dart';
 import 'package:mornye/services/library_schema.dart';
 import 'package:mornye/services/library_file_sizes.dart';
 import 'package:mornye/services/sqlite_helpers.dart' as sqlite;
+import 'package:mornye/models/download_history.dart';
+import 'package:mornye/models/unified_library_item.dart';
 import 'package:mornye/utils/library_format_filters.dart';
 
 String confirmedMissingLyricsSqlPredicate({
@@ -1087,6 +1089,18 @@ class LibraryQueueStore {
         _QueueOrderTerm('queue_source'),
         _QueueOrderTerm('id'),
       ],
+      'folder-asc' => const [
+        _QueueOrderTerm('file_path'),
+        _QueueOrderTerm('sort_track'),
+        _QueueOrderTerm('queue_source'),
+        _QueueOrderTerm('id'),
+      ],
+      'folder-desc' => const [
+        _QueueOrderTerm('file_path', descending: true),
+        _QueueOrderTerm('sort_track'),
+        _QueueOrderTerm('queue_source'),
+        _QueueOrderTerm('id'),
+      ],
       _ => const [
         _QueueOrderTerm('sort_added', descending: true),
         _QueueOrderTerm('sort_track'),
@@ -1258,5 +1272,138 @@ class LibraryQueueStore {
       },
     };
     return {'source': source, 'item': item};
+  }
+
+  /// All tracks with path and basic metadata across downloaded and scanned music,
+  /// deduplicated, for building the folder tree.
+  Future<List<UnifiedLibraryItem>> allTracksForFolders({
+    bool includeLocal = true,
+  }) async {
+    final query = StringBuffer('''
+      SELECT
+        'downloaded' AS queue_source,
+        'dl_' || h.id AS unified_id,
+        h.id,
+        h.track_name,
+        h.artist_name,
+        h.album_name,
+        h.album_artist,
+        h.cover_url,
+        h.file_path,
+        h.saf_relative_dir,
+        h.duration,
+        h.track_number,
+        h.disc_number,
+        h.downloaded_at,
+        h.bitrate,
+        h.bit_depth,
+        h.sample_rate,
+        h.format,
+        h.quality,
+        NULL AS cover_path
+      FROM history_db.history h
+    ''');
+    if (includeLocal) {
+      query.write('''
+      UNION ALL
+      SELECT
+        'local' AS queue_source,
+        'local_' || l.id AS unified_id,
+        l.id,
+        l.track_name,
+        l.artist_name,
+        l.album_name,
+        l.album_artist,
+        NULL AS cover_url,
+        l.file_path,
+        NULL AS saf_relative_dir,
+        l.duration,
+        l.track_number,
+        l.disc_number,
+        l.scanned_at AS downloaded_at,
+        l.bitrate,
+        l.bit_depth,
+        l.sample_rate,
+        l.format,
+        NULL AS quality,
+        l.cover_path
+      FROM ${LibrarySchema.visibleView} l
+      WHERE NOT EXISTS (
+        SELECT 1 FROM library_path_keys lpk
+        JOIN history_db.history_path_keys hpk ON hpk.path_key = lpk.path_key
+        WHERE lpk.item_id = l.id
+      )
+      ''');
+    }
+    final rows = await _db.rawQuery(query.toString());
+    final items = <UnifiedLibraryItem>[];
+    for (final row in rows) {
+      final source = row['queue_source'] as String? ?? '';
+      final isLocal = source == 'local';
+      final path = (row['file_path'] as String? ?? '').trim();
+      if (path.isEmpty) continue;
+
+      final trackName = row['track_name'] as String? ?? '';
+      final artistName = row['artist_name'] as String? ?? '';
+      final albumName = row['album_name'] as String? ?? '';
+      final id = row['id'] as String? ?? '';
+      final duration = (row['duration'] as num?)?.toInt();
+      final trackNumber = (row['track_number'] as num?)?.toInt();
+      final discNumber = (row['disc_number'] as num?)?.toInt();
+      final coverUrl = row['cover_url'] as String?;
+      final coverPath = row['cover_path'] as String?;
+      final bitrate = (row['bitrate'] as num?)?.toInt();
+      final bitDepth = (row['bit_depth'] as num?)?.toInt();
+      final sampleRate = (row['sample_rate'] as num?)?.toInt();
+      final format = row['format'] as String?;
+      final rawQuality = row['quality'] as String?;
+      final addedAt =
+          DateTime.tryParse(row['downloaded_at'] as String? ?? '') ??
+          DateTime.now();
+
+      if (isLocal) {
+        final localItem = LocalLibraryItem(
+          id: id,
+          trackName: trackName,
+          artistName: artistName,
+          albumName: albumName,
+          albumArtist: row['album_artist'] as String?,
+          filePath: path,
+          coverPath: coverPath,
+          duration: duration,
+          trackNumber: trackNumber,
+          discNumber: discNumber,
+          bitrate: bitrate,
+          bitDepth: bitDepth,
+          sampleRate: sampleRate,
+          format: format,
+          scannedAt: addedAt,
+        );
+        items.add(UnifiedLibraryItem.fromLocalLibrary(localItem));
+      } else {
+        final historyItem = DownloadHistoryItem(
+          id: id,
+          trackName: trackName,
+          artistName: artistName,
+          albumName: albumName,
+          albumArtist: row['album_artist'] as String?,
+          coverUrl: coverUrl,
+          filePath: path,
+          safRelativeDir: row['saf_relative_dir'] as String?,
+          duration: duration,
+          trackNumber: trackNumber,
+          discNumber: discNumber,
+          bitrate: bitrate,
+          bitDepth: bitDepth,
+          sampleRate: sampleRate,
+          format: format,
+          quality: rawQuality,
+          service: 'download',
+          downloadedAt: addedAt,
+        );
+        items.add(UnifiedLibraryItem.fromDownloadHistory(historyItem));
+      }
+    }
+    return items;
   }
 }

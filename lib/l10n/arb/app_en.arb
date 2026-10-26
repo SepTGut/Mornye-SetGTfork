@@ -1461,6 +1461,38 @@
   "@searchPlaylists": {
     "description": "Search result category - playlists"
   },
+  "searchFolders": "Folders",
+  "@searchFolders": {
+    "description": "Library and search category - folders"
+  },
+  "libraryFolders": "Folders",
+  "@libraryFolders": {
+    "description": "Library category - folders"
+  },
+  "libraryNoFolders": "No folders found",
+  "@libraryNoFolders": {
+    "description": "Empty state when no folders are found in the library"
+  },
+  "libraryFolderSongsCount": "{count, plural, =1{1 song} other{{count} songs}}",
+  "@libraryFolderSongsCount": {
+    "description": "Track count in a folder",
+    "placeholders": {
+      "count": {
+        "type": "num",
+        "format": "compact"
+      }
+    }
+  },
+  "libraryFolderSubfoldersCount": "{count, plural, =1{1 folder} other{{count} folders}}",
+  "@libraryFolderSubfoldersCount": {
+    "description": "Subfolder count in a folder",
+    "placeholders": {
+      "count": {
+        "type": "num",
+        "format": "compact"
+      }
+    }
+  },
   "searchSortTitle": "Sort Results",
   "@searchSortTitle": {
     "description": "Bottom sheet title for search sort options"
@@ -3219,6 +3251,14 @@
   "libraryFilterSortGenreDesc": "Genre (Z-A)",
   "@libraryFilterSortGenreDesc": {
     "description": "Sort option - genre descending"
+  },
+  "libraryFilterSortFolderAsc": "Folder (A-Z)",
+  "@libraryFilterSortFolderAsc": {
+    "description": "Sort option: sort by folder path ascending"
+  },
+  "libraryFilterSortFolderDesc": "Folder (Z-A)",
+  "@libraryFilterSortFolderDesc": {
+    "description": "Sort option: sort by folder path descending"
   },
   "timeJustNow": "Just now",
   "@timeJustNow": {

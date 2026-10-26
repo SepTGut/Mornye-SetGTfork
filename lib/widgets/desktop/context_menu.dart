@@ -297,9 +297,21 @@ class _MaterialContextMenuState extends State<_MaterialContextMenu> {
         .expand((group) => group)
         .where((action) => action.onSelected != null)
         .firstOrNull;
+    final size = MediaQuery.sizeOf(context);
+    final spaceBelow = size.height - widget.position.dy - 12;
+    final spaceAbove = widget.position.dy - 12;
+    final maxMenuHeight = spaceBelow >= 240
+        ? spaceBelow
+        : (spaceAbove > spaceBelow ? spaceAbove : spaceBelow);
+
     return MenuAnchor(
       controller: _controller,
       onClose: _handleClose,
+      style: MenuStyle(
+        maximumSize: WidgetStatePropertyAll(
+          Size(double.infinity, maxMenuHeight),
+        ),
+      ),
       menuChildren: [
         for (var i = 0; i < widget.groups.length; i++) ...[
           if (i > 0) const Divider(height: 9, indent: 12, endIndent: 12),

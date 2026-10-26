@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/foundation.dart' show ValueListenable, clampDouble;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart'
@@ -84,6 +85,8 @@ import 'package:mornye/services/cover_cache_manager.dart';
 import 'package:mornye/screens/library_tracks_folder_screen.dart';
 import 'package:mornye/screens/local_album_screen.dart';
 import 'package:mornye/screens/mornye_library_screen.dart';
+import 'package:mornye/screens/library_folder_browser_screen.dart';
+import 'package:path/path.dart' as p;
 import 'package:mornye/controllers/completion_bridge_tracker.dart';
 import 'package:mornye/controllers/queue_library_pager.dart';
 import 'package:mornye/controllers/queue_library_refresh_policy.dart';
@@ -169,9 +172,15 @@ class _QueueTabState extends ConsumerState<QueueTab> {
 
   PageController? _filterPageController;
 
-  /// Pages of the Library pager: Songs, Albums, Artists and Playlists.
+  /// Pages of the Library pager: Songs, Albums, Artists, Playlists and Folders.
   /// Singles share the Albums page behind [_albumsShowSingles].
-  final List<String> _filterModes = ['all', 'albums', 'artists', 'playlists'];
+  final List<String> _filterModes = [
+    'all',
+    'albums',
+    'artists',
+    'playlists',
+    'folders',
+  ];
   bool _albumsShowSingles = false;
 
   int _pageIndexFor(String mode) =>
@@ -269,9 +278,8 @@ class _QueueTabState extends ConsumerState<QueueTab> {
         (settings.defaultLibraryView == 'last'
             ? settings.historyFilterMode
             : settings.defaultLibraryView);
-    final initialPage = _pageIndexFor(
-      initialFilter,
-    ).clamp(0, _filterModes.length - 1);
+    final initialPage = _pageIndexFor(initialFilter)
+        .clamp(0, _filterModes.length - 1);
     _albumsShowSingles = initialFilter == 'singles';
     final initialMode = _modeForPage(initialPage);
     if (widget.librarySection == null &&
@@ -745,7 +753,7 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     final currentTotalCount = switch (historyFilterMode) {
       'albums' => queueCounts.albumCount,
       'singles' => queueCounts.singleTrackCount,
-      'playlists' || 'artists' => 0,
+      'playlists' || 'artists' || 'folders' => 0,
       _ => queueCounts.allTrackCount,
     };
     final hasMoreLibrary = currentLoadedCount < currentTotalCount;
@@ -779,9 +787,8 @@ class _QueueTabState extends ConsumerState<QueueTab> {
       );
     }
 
-    final selectionItems = getFilterData(
-      historyFilterMode,
-    ).filteredUnifiedItems;
+    final selectionItems = getFilterData(historyFilterMode)
+        .filteredUnifiedItems;
     if (_isSelectionMode || _isPlaylistSelectionMode) {
       final bottomPadding = MediaQuery.paddingOf(context).bottom;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -816,9 +823,8 @@ class _QueueTabState extends ConsumerState<QueueTab> {
           // ScrollConfiguration disables stretch overscroll to fix _StretchController exception
           // This is a known Flutter issue with NestedScrollView + Material 3 stretch indicator
           ScrollConfiguration(
-            behavior: ScrollConfiguration.of(
-              context,
-            ).copyWith(overscroll: false),
+            behavior: ScrollConfiguration.of(context)
+                .copyWith(overscroll: false),
             child: NestedScrollView(
               headerSliverBuilder: (context, innerBoxIsScrolled) => [
                 if (widget.librarySection == null)
@@ -893,6 +899,7 @@ class _QueueTabState extends ConsumerState<QueueTab> {
                                 // shows none rather than a guess.
                                 (context.l10n.searchArtists, null),
                                 (context.l10n.searchPlaylists, playlistCount),
+                                (context.l10n.libraryFolders, null),
                               ],
                             );
                           }
@@ -951,6 +958,13 @@ class _QueueTabState extends ConsumerState<QueueTab> {
                                       context.l10n.searchPlaylists,
                                       playlistCount,
                                     ),
+                                    const SizedBox(width: 8),
+                                    tab(
+                                      4,
+                                      Icons.folder_outlined,
+                                      context.l10n.libraryFolders,
+                                      null,
+                                    ),
                                   ],
                                 ),
                               ),
@@ -983,18 +997,20 @@ class _QueueTabState extends ConsumerState<QueueTab> {
                       ],
                     )
                   : widget.librarySection != null
-                  ? _buildFilterContent(
-                      context: context,
-                      colorScheme: colorScheme,
-                      filterMode: historyFilterMode,
-                      historyViewMode: 'list',
-                      hasQueueItems: false,
-                      filterData: getFilterData(historyFilterMode),
-                      collectionState: collectionState,
-                      hasMoreLibrary: hasMoreLibrary,
-                      isPageLoading: isLibraryPageLoading,
-                      inMemoryHistoryItems: inMemoryHistoryItems,
-                    )
+                  ? (widget.librarySection == 'folders'
+                        ? _buildFoldersPage(context, colorScheme)
+                        : _buildFilterContent(
+                            context: context,
+                            colorScheme: colorScheme,
+                            filterMode: historyFilterMode,
+                            historyViewMode: 'list',
+                            hasQueueItems: false,
+                            filterData: getFilterData(historyFilterMode),
+                            collectionState: collectionState,
+                            hasMoreLibrary: hasMoreLibrary,
+                            isPageLoading: isLibraryPageLoading,
+                            inMemoryHistoryItems: inMemoryHistoryItems,
+                          ))
                   : PageView.builder(
                       controller: _filterPageController!,
                       physics: const ClampingScrollPhysics(),
@@ -1003,6 +1019,9 @@ class _QueueTabState extends ConsumerState<QueueTab> {
                       itemBuilder: (context, index) {
                         if (_filterModes[index] == 'artists') {
                           return _buildArtistsPage(context, colorScheme);
+                        }
+                        if (_filterModes[index] == 'folders') {
+                          return _buildFoldersPage(context, colorScheme);
                         }
                         final filterMode = _modeForPage(index);
                         final filterData = getFilterData(filterMode);

@@ -445,6 +445,11 @@ class _MornyeLibraryScreenState extends ConsumerState<MornyeLibraryScreen> {
                         context.l10n.searchSongs,
                         () => widget.onOpenSection('all'),
                       ),
+                      (
+                        Icons.folder_outlined,
+                        context.l10n.libraryFolders,
+                        () => widget.onOpenSection('folders'),
+                      ),
                     ]) ...[
                       // The desktop shell paints its background without a
                       // Material, which would hide the row's ink.

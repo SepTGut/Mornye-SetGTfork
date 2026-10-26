@@ -3,6 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:mornye/utils/logger.dart';
 import 'package:mornye/utils/audio_format_utils.dart';
+import 'package:mornye/models/unified_library_item.dart';
 import 'package:mornye/utils/file_access.dart';
 import 'package:mornye/services/history_database.dart';
 import 'package:mornye/services/library_queue_store.dart';
@@ -410,16 +411,11 @@ class LibraryDatabase {
 
   String _orderByForSort(LocalLibrarySortMode sortMode) {
     return switch (sortMode) {
-      LocalLibrarySortMode.title =>
-        'track_name_norm, artist_name_norm, album_name_norm, disc_number, track_number',
-      LocalLibrarySortMode.artist =>
-        'artist_name_norm, album_name_norm, disc_number, track_number, track_name_norm',
-      LocalLibrarySortMode.latest =>
-        'scanned_at DESC, album_artist_norm, album_name_norm, disc_number, track_number',
-      LocalLibrarySortMode.quality =>
-        'COALESCE(bit_depth, 0) DESC, COALESCE(sample_rate, 0) DESC, COALESCE(bitrate, 0) DESC, album_artist_norm, album_name_norm, disc_number, track_number',
-      LocalLibrarySortMode.album =>
-        'album_artist_norm, album_name_norm, COALESCE(disc_number, 0), COALESCE(track_number, 0), track_name_norm',
+      LocalLibrarySortMode.title => 'track_name_norm, artist_name_norm, album_name_norm, disc_number, track_number',
+      LocalLibrarySortMode.artist => 'artist_name_norm, album_name_norm, disc_number, track_number, track_name_norm',
+      LocalLibrarySortMode.latest => 'scanned_at DESC, album_artist_norm, album_name_norm, disc_number, track_number',
+      LocalLibrarySortMode.quality => 'COALESCE(bit_depth, 0) DESC, COALESCE(sample_rate, 0) DESC, COALESCE(bitrate, 0) DESC, album_artist_norm, album_name_norm, disc_number, track_number',
+      LocalLibrarySortMode.album => 'album_artist_norm, album_name_norm, COALESCE(disc_number, 0), COALESCE(track_number, 0), track_name_norm',
     };
   }
 
@@ -469,6 +465,13 @@ class LibraryDatabase {
     QueueLibraryDbQuery request,
   ) async => (await _queueStore()).artistPage(request);
 
+  /// All tracks with path and basic metadata across downloaded and scanned music,
+  /// deduplicated, for building the folder tree.
+  Future<List<UnifiedLibraryItem>> getQueueAllTracksForFolders({
+    bool includeLocal = true,
+  }) async =>
+      (await _queueStore()).allTracksForFolders(includeLocal: includeLocal);
+
   Future<List<Map<String, dynamic>>> getQueueLocalAlbumTracks(
     String albumName,
     String artistName,
@@ -476,8 +479,7 @@ class LibraryDatabase {
     final db = await database;
     final rows = await db.query(
       visibleLibraryView,
-      where:
-          "LOWER(album_name) = ? AND LOWER(COALESCE(NULLIF(album_artist, ''), artist_name)) = ?",
+      where: "LOWER(album_name) = ? AND LOWER(COALESCE(NULLIF(album_artist, ''), artist_name)) = ?",
       whereArgs: [albumName.toLowerCase(), artistName.toLowerCase()],
       orderBy:
           'COALESCE(disc_number, 0), COALESCE(track_number, 0), track_name',

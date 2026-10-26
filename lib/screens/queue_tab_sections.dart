@@ -39,6 +39,7 @@ const _alphabeticalSorts = {'a-z', 'z-a'};
 const _artistSorts = {'artist-asc', 'artist-desc'};
 const _albumSorts = {'album-asc', 'album-desc'};
 const _dateSorts = {'latest', 'oldest'};
+const _folderSorts = {'folder-asc', 'folder-desc'};
 
 /// Sort choices offered by the Library sort sheet, in display order.
 const _librarySortModes = [
@@ -52,6 +53,8 @@ const _librarySortModes = [
   'artist-desc',
   'album-asc',
   'album-desc',
+  'folder-asc',
+  'folder-desc',
   'release-newest',
   'release-oldest',
   'genre-asc',
@@ -63,7 +66,9 @@ extension _QueueTabSections on _QueueTabState {
     final mode =
         widget.librarySection ?? ref.read(settingsProvider).historyFilterMode;
     return mode == 'playlists'
-        ? _librarySortModes.where((sort) => !sort.startsWith('size-'))
+        ? _librarySortModes.where(
+            (sort) => !sort.startsWith('size-') && !sort.startsWith('folder-'),
+          )
         : _librarySortModes;
   }
 
@@ -79,6 +84,8 @@ extension _QueueTabSections on _QueueTabState {
       'artist-desc' => l10n.searchSortArtistZA,
       'album-asc' => l10n.libraryFilterSortAlbumAsc,
       'album-desc' => l10n.libraryFilterSortAlbumDesc,
+      'folder-asc' => l10n.libraryFilterSortFolderAsc,
+      'folder-desc' => l10n.libraryFilterSortFolderDesc,
       'release-newest' => l10n.searchSortDateNewest,
       'release-oldest' => l10n.searchSortDateOldest,
       'genre-asc' => l10n.libraryFilterSortGenreAsc,
@@ -98,6 +105,12 @@ extension _QueueTabSections on _QueueTabState {
     }
     if (_albumSorts.contains(_sortMode)) {
       return _sectionInitial(item.albumName);
+    }
+    if (_folderSorts.contains(_sortMode)) {
+      final pth = item.filePath.replaceAll('\\', '/');
+      final dir = p.posix.dirname(pth);
+      final name = p.posix.basename(dir);
+      return name.isEmpty || name == '.' || name == '/' ? 'Music' : name;
     }
     if (_dateSorts.contains(_sortMode)) {
       return _monthYearFormat(context).format(item.addedAt);
@@ -218,6 +231,7 @@ extension _QueueTabSections on _QueueTabState {
                 'a-z' || 'z-a' => Icons.sort_by_alpha,
                 'artist-asc' || 'artist-desc' => Icons.person_outline,
                 'album-asc' || 'album-desc' => Icons.album_outlined,
+                'folder-asc' || 'folder-desc' => Icons.folder_outlined,
                 'release-newest' || 'release-oldest' => Icons.event_outlined,
                 'genre-asc' || 'genre-desc' => Icons.category_outlined,
                 'size-desc' || 'size-asc' => Icons.storage_outlined,
@@ -456,9 +470,8 @@ extension _QueueTabSections on _QueueTabState {
                     child: Text(
                       context.l10n.libraryArtistsEmpty,
                       textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
+                      style: Theme.of(context).textTheme.bodyLarge
+                          ?.copyWith(color: colorScheme.onSurfaceVariant),
                     ),
                   ),
                 ),
@@ -522,6 +535,11 @@ extension _QueueTabSections on _QueueTabState {
         );
       },
     );
+  }
+
+  /// Folders across downloaded and scanned music, hierarchical browser.
+  Widget _buildFoldersPage(BuildContext context, ColorScheme colorScheme) {
+    return const LibraryFolderBrowserWidget(isTab: true);
   }
 }
 
@@ -667,15 +685,13 @@ class _ArtistRow extends StatelessWidget {
                         entry.artist,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
+                        style: Theme.of(context).textTheme.bodyLarge
+                            ?.copyWith(fontWeight: FontWeight.w600),
                       ),
                       Text(
                         context.l10n.tracksCount(entry.trackCount),
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: colors.onSurfaceVariant,
-                        ),
+                        style: Theme.of(context).textTheme.bodySmall
+                            ?.copyWith(color: colors.onSurfaceVariant),
                       ),
                     ],
                   ),
