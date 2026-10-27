@@ -6,6 +6,8 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/widgets.dart'
     show AppLifecycleState, WidgetsBinding, WidgetsBindingObserver;
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:mornye/services/playback_notification.dart';
 import 'package:audio_session/audio_session.dart'
     show
@@ -48,6 +50,10 @@ part 'music_player_automix.dart';
 part 'music_player_autoplay.dart';
 
 final _log = AppLogger('MusicPlayer');
+
+class _PlaybackSourceStagingCancelled implements Exception {
+  const _PlaybackSourceStagingCancelled();
+}
 
 /// Muted artwork shares the music session. Recover its Now Playing ownership
 /// after video initialization, including failed or abandoned initialization.
@@ -225,14 +231,16 @@ class MusicPlayerHandler extends BaseAudioHandler
       pulse: hapticPulse,
     );
     _sourceCache = ContentUriPlaybackCache(
-      copy: PlatformBridge.copyContentUriToTemp,
+      copy: (source) => source.startsWith('network://')
+          ? _copyNetworkPlaybackToTemp(source)
+          : PlatformBridge.copyContentUriToTemp(source),
       isDisposed: () => _disposed,
       isPinned: (path) =>
           path == _activeResolvedPath || _autoMix.pinnedPaths.contains(path),
       onResolveError: (error) =>
-          _log.e('Failed to resolve content URI for playback: $error'),
+          _log.e('Failed to stage playback source: $error'),
       onDeleteError: (error) =>
-          _log.w('Failed to delete SAF playback temp file: $error'),
+          _log.w('Failed to delete playback temp file: $error'),
     );
     _sessionWriter = PlaybackSessionWriter(
       database: _dependencies.sessionDatabase,
@@ -986,6 +994,91 @@ class MusicPlayerHandler extends BaseAudioHandler
     return _sourceCache.resolve(media.source);
   }
 
+  /// Direct USB needs a seekable local file. Network-drive tracks normally use
+  /// the loopback streaming URL returned by NetworkStorageService, so stage
+  /// them to disk only when the user explicitly selected Direct USB.
+  Future<String?> _copyNetworkPlaybackToTemp(String source) async {
+    final generation = _playRequestGeneration;
+    void checkpoint() {
+      if (_disposed || generation != _playRequestGeneration) {
+        throw const _PlaybackSourceStagingCancelled();
+      }
+    }
+
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 20)
+      ..idleTimeout = const Duration(seconds: 20)
+      ..autoUncompress = false;
+    File? target;
+    try {
+      final url = await _dependencies.resolveNetworkSource(source);
+      checkpoint();
+      final request = await client
+          .getUrl(Uri.parse(url))
+          .timeout(const Duration(seconds: 20));
+      checkpoint();
+      request.followRedirects = false;
+      request.headers.set(HttpHeaders.acceptEncodingHeader, 'identity');
+      final response = await request.close().timeout(
+        const Duration(seconds: 20),
+      );
+      checkpoint();
+      if (response.statusCode != HttpStatus.ok) {
+        await response.drain<void>();
+        throw HttpException(
+          'Network audio returned HTTP ${response.statusCode}',
+          uri: Uri.parse(source),
+        );
+      }
+
+      final uri = Uri.parse(source);
+      final name = uri.pathSegments.isEmpty ? 'audio' : uri.pathSegments.last;
+      final suffix = p.extension(name);
+      final extension = RegExp(r'^\.[A-Za-z0-9]{1,10}$').hasMatch(suffix)
+          ? suffix
+          : '';
+      final tempDirectory = await getTemporaryDirectory();
+      checkpoint();
+      target = File(
+        p.join(
+          tempDirectory.path,
+          'mornye-network-playback-${DateTime.now().microsecondsSinceEpoch}$extension',
+        ),
+      );
+      var received = 0;
+      final sink = target.openWrite();
+      try {
+        await sink.addStream(
+          response.timeout(const Duration(seconds: 20)).map((chunk) {
+            checkpoint();
+            received += chunk.length;
+            return chunk;
+          }),
+        );
+      } finally {
+        await sink.close();
+      }
+      if (received == 0 ||
+          (response.contentLength >= 0 && received != response.contentLength)) {
+        throw const HttpException('Incomplete network audio file');
+      }
+      checkpoint();
+      return target.path;
+    } catch (error) {
+      if (target != null) {
+        try {
+          if (await target.exists()) await target.delete();
+        } on FileSystemException {
+          // Do not replace the transfer failure with a cleanup failure.
+        }
+      }
+      if (error is _PlaybackSourceStagingCancelled) return null;
+      rethrow;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
   Future<void> _cleanupPendingResolvedPaths() => _sourceCache.releaseUnpinned();
 
   void _markSessionQueueChanged() => _sessionWriter.queueChanged();
@@ -1357,12 +1450,13 @@ class MusicPlayerHandler extends BaseAudioHandler
     String path,
     int generation,
     PlayableMedia media,
-    Duration? position,
-  ) async {
+    Duration? position, {
+    bool localFile = false,
+  }) async {
     // AudioPlayer.play combines prepare/seek/resume without a cancellation
     // boundary. A late prepare from an old request could resume the wrong
     // source. Serialize preparation and recheck before making it audible.
-    if (media.isNetwork) {
+    if (media.isNetwork && !localFile) {
       await _player.setNetworkSource(path);
     } else {
       await _player.setFileSource(
@@ -1443,7 +1537,26 @@ class MusicPlayerHandler extends BaseAudioHandler
         _log.w('Failed to open direct SAF playback lease: $e');
       }
     }
-    var resolved = playbackLease?.path ?? await _resolveSource(media);
+    final stageNetworkForDirectUsb =
+        _dependencies.isAndroid &&
+        media.source.startsWith('network://') &&
+        _settings.usbBitPerfect &&
+        _settings.usbDirect;
+    var resolved = playbackLease?.path;
+    var usingLocalNetworkCopy = false;
+    if (resolved == null && stageNetworkForDirectUsb) {
+      resolved = await _sourceCache.resolve(media.source);
+      usingLocalNetworkCopy = resolved != null;
+      if (!_isCurrentPlayRequest(generation, media)) {
+        if (playbackLease != null) {
+          await PlatformBridge.closeContentUriPlaybackLease(
+            playbackLease.token,
+          );
+        }
+        return;
+      }
+    }
+    resolved ??= await _resolveSource(media);
     var usingLocalSafCopy = media.isContentUri && playbackLease == null;
     if (!_isCurrentPlayRequest(generation, media)) {
       if (playbackLease != null) {
@@ -1495,7 +1608,13 @@ class MusicPlayerHandler extends BaseAudioHandler
           ? effectiveStartPosition
           : null;
       try {
-        await _startResolvedSource(resolved, generation, media, startAt);
+        await _startResolvedSource(
+          resolved,
+          generation,
+          media,
+          startAt,
+          localFile: usingLocalNetworkCopy,
+        );
         if (playbackLease != null) {
           await PlatformBridge.closeContentUriPlaybackLease(
             playbackLease.token,
@@ -1536,7 +1655,9 @@ class MusicPlayerHandler extends BaseAudioHandler
         unawaited(_loadNetworkMetadata(media, generation));
       }
       _pendingRestorePosition = null;
-      _activeResolvedPath = usingLocalSafCopy ? resolved : null;
+      _activeResolvedPath = usingLocalSafCopy || usingLocalNetworkCopy
+          ? resolved
+          : null;
       await _cleanupPendingResolvedPaths();
       if (!_isCurrentPlayRequest(generation, media)) return;
       // Plain file paths were already published before loading. Re-publishing
