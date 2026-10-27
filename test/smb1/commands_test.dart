@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mornye/services/smb/smb_client.dart';
 import 'package:mornye/services/smb/v1/commands.dart';
 import 'package:mornye/services/smb/v1/packet.dart';
 import 'package:mornye/services/smb/v1/shares.dart';

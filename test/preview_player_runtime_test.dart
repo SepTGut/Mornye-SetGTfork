@@ -112,6 +112,12 @@ class _PreviewDeck implements PlaybackDeck {
   @override
   bool get isDirect => false;
   @override
+  bool get isExclusiveOutputActive => false;
+  @override
+  String? get outputParams => null;
+  @override
+  String? get exclusiveOutputFallbackReason => null;
+  @override
   bool get needsSourceReload => false;
   @override
   Stream<PlaybackDeckState> get onPlayerStateChanged => states.stream;

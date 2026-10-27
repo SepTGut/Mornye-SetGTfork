@@ -508,14 +508,14 @@ class _AudioFacts {
           ].join(' · ');
     final rate = processing?.autoMixRate ?? 1;
     final decoder = route?.stream?.decoder;
+    final fallbackReason = processing?.exclusiveOutputFallbackReason;
+    final fallbackFact = fallbackReason == null
+        ? null
+        : _Fact(l10n.audioInfoOutputFallback, fallbackReason);
     return [
       _Fact(l10n.audioInfoPlayer, l10n.audioInfoPlayerValue),
       _Fact(l10n.audioInfoSignalPath, signalPath),
-      if (processing?.exclusiveOutputFallbackReason != null)
-        _Fact(
-          l10n.audioInfoOutputFallback,
-          processing!.exclusiveOutputFallbackReason!,
-        ),
+      ?fallbackFact,
       if (_outputFormat case final params?)
         _Fact(l10n.audioInfoOutputFormat, params),
       if (!direct && decoder != null)
@@ -582,11 +582,12 @@ class _AudioFacts {
       r'(?:channel-count|channels)\s*[:=]\s*"?(\d+)',
       caseSensitive: false,
     ).firstMatch(raw)?.group(1);
-    final parts = [
-      if (format != null) format,
-      if (_outputSampleRate case final rate?) '${_khz(rate)} kHz',
-      if (channels != null) '$channels ch',
-    ];
+    final outputRate = _outputSampleRate;
+    final outputRateLabel = outputRate == null
+        ? null
+        : '${_khz(outputRate)} kHz';
+    final channelsLabel = channels == null ? null : '$channels ch';
+    final parts = [?format, ?outputRateLabel, ?channelsLabel];
     return parts.isEmpty ? raw : parts.join(' · ');
   }
 
