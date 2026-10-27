@@ -1,5 +1,15 @@
 # Changelog
 
+## [5.5.3] - 2026-10-27
+
+### Added
+
+- Windows playback can select a libmpv output device and use adaptive WASAPI exclusive output with shared-mode fallback and negotiated format diagnostics.
+
+### Changed
+
+- Release builds now target Android ARM32/ARM64, Linux x64, and Windows x64.
+
 ## [5.5.2.1] - 2026-10-27
 
 - Retry Android release build with a fresh version tag.

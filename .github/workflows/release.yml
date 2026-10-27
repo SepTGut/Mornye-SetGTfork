@@ -278,245 +278,7 @@ jobs:
             build/app/outputs/flutter-apk/Mornye-*.apk.idsig
             build/app/outputs/flutter-apk/SHA256SUMS.txt
 
-  build-ios:
-    runs-on: macos-15
-    needs: get-version # Only depends on version, NOT android build!
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Prepare pinned Discord SDK
-        uses: ./.github/actions/discord-sdk
-        with:
-          passphrase: ${{ secrets.DISCORD_MOBILE_SDK_PASSPHRASE }}
-
-      - name: Select Xcode 26.1.1
-        run: |
-          sudo xcode-select -s /Applications/Xcode_26.1.1.app
-          xcodebuild -version
-
-      - name: Build Rust backend for iOS
-        run: bash scripts/build_ios.sh
-
-      - name: Cache CocoaPods
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ios/Pods
-          key: pods-rust-${{ runner.os }}-${{ hashFiles('ios/Podfile', 'ios/Podfile.lock', 'rust_backend/MornyeBackend.podspec', 'rust_backend/Cargo.lock') }}
-          restore-keys: pods-rust-${{ runner.os }}-
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
-        with:
-          channel: "stable"
-          flutter-version-file: .fvmrc
-          cache: true
-
-      - name: Cache pub dependencies
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.pub-cache
-          key: pub-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
-          restore-keys: pub-${{ runner.os }}-
-
-      - name: Get Flutter dependencies
-        run: flutter pub get
-
-      - name: Prepare Flutter framework patch
-        run: dart scripts/prepare_flutter_sdk.dart
-
-      - name: Normalize ffmpeg plugin shell scripts (strip CRLF)
-        run: |
-          find "$HOME/.pub-cache/hosted" -path "*ffmpeg_kit_flutter_new_audio*/scripts/*.sh" -type f -print0 |
-            while IFS= read -r -d '' f; do
-              perl -pi -e 's/\r$//' "$f"
-              chmod +x "$f"
-              echo "Normalized line endings: $f"
-            done
-
-      - name: Generate app icons
-        run: dart run flutter_launcher_icons
-
-      - name: Configure Rust application pods
-        working-directory: ios
-        run: |
-          if [[ "$MORNYE_DISCORD_SDK" == "1" ]]; then
-            test -f ../third_party/mornye_discord/ios/Frameworks/discord_partner_sdk.xcframework/Info.plist || {
-              echo "Production requires the official Discord SDK. Run scripts/setup_discord_sdk.sh in the build environment first." >&2
-              exit 1
-            }
-            test -f ../third_party/mornye_discord/ios/Frameworks/Discord-License-Notices.txt
-          fi
-          pod install
-
-      - name: Build iOS (unsigned)
-        run: |
-          flutter build ios --release --no-codesign --config-only --target lib/main.dart \
-            --dart-define="GIT_COMMIT=$(git rev-parse --short=8 HEAD)"
-
-          cd ios
-          xcodebuild -workspace Runner.xcworkspace \
-            -scheme Runner \
-            -configuration Release \
-            -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            -archivePath build/Runner.xcarchive \
-            archive \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            DEVELOPMENT_TEAM=""
-
-      - name: Audit Rust iOS archive before packaging
-        run: |
-          if [[ "$MORNYE_DISCORD_SDK" == "1" ]]; then
-            app="ios/build/Runner.xcarchive/Products/Applications/Runner.app"
-            for required in \
-              Frameworks/discord_partner_sdk.framework/discord_partner_sdk \
-              Frameworks/mornye_discord.framework/Discord-License-Notices.txt; do
-              test -s "$app/$required" || {
-                echo "Required Discord file missing or empty: $app/$required" >&2
-                exit 1
-              }
-            done
-          fi
-          python3 -m unittest discover -s scripts -p 'test_check_backend_ios.py'
-          python3 scripts/check_backend_ios.py \
-            ios/build/Runner.xcarchive/Products/Applications/Runner.app \
-            --dsym ios/build/Runner.xcarchive/dSYMs/Runner.app.dSYM \
-            --backend rust --archs arm64 --platform ios --release
-
-      - name: Create IPA
-        env:
-          VERSION: ${{ needs.get-version.outputs.version }}
-        run: |
-          mkdir -p build/ios/ipa
-          cd ios/build/Runner.xcarchive/Products/Applications
-          mkdir Payload
-          cp -r Runner.app Payload/
-          # Use absolute path to avoid relative path issues
-          zip -r "$GITHUB_WORKSPACE/build/ios/ipa/Mornye-${VERSION}-ios-unsigned.ipa" Payload
-          rm -rf Payload
-
-      - name: Verify IPA created
-        env:
-          VERSION: ${{ needs.get-version.outputs.version }}
-        run: |
-          ls -la build/ios/ipa/
-          if [ ! -f "build/ios/ipa/Mornye-${VERSION}-ios-unsigned.ipa" ]; then
-            echo "ERROR: IPA not created!"
-            exit 1
-          fi
-
-      - name: Upload IPA artifact
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: ios-ipa
-          path: build/ios/ipa/Mornye-*.ipa
-
-  # Desktop builds mirror .github/workflows/desktop.yml without its Cargo
-  # cache, then package: a universal dmg (ad hoc signed, not notarized),
-  # AppImage and deb per Linux architecture, and a Windows installer and
-  # portable zip. Each job uploads SHA256SUMS-<target>.txt for create-release.
-  build-macos:
-    name: Build macOS (universal)
-    runs-on: macos-15
-    needs: get-version
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Select Xcode 26.1.1
-        run: |
-          sudo xcode-select -s /Applications/Xcode_26.1.1.app
-          xcodebuild -version
-
-      - name: Activate pinned Rust toolchain
-        working-directory: rust_backend
-        run: rustup show
-
-      - name: Build Rust desktop library
-        run: bash scripts/build_rust_backend.sh desktop
-
-      # The from-source LGPL build only changes with the script, which pins
-      # every source archive.
-      - name: Cache LGPL FFmpeg build
-        id: ffmpeg-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: build/ffmpeg/macos-universal
-          key: ffmpeg-macos-universal-${{ hashFiles('scripts/fetch_desktop_ffmpeg.sh') }}
-
-      - name: Build LGPL FFmpeg
-        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
-        run: bash scripts/fetch_desktop_ffmpeg.sh macos-universal
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
-        with:
-          channel: "stable"
-          flutter-version-file: .fvmrc
-          cache: true
-
-      - name: Cache pub dependencies
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.pub-cache
-          key: pub-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
-          restore-keys: pub-${{ runner.os }}-
-
-      - name: Get Flutter dependencies
-        run: flutter pub get
-
-      - name: Prepare Flutter framework patch
-        run: dart scripts/prepare_flutter_sdk.dart
-
-      # A stable self-signed identity keeps keychain access across updates.
-      # Without the secrets the build stays ad hoc signed.
-      - name: Set up the signing identity
-        env:
-          MACOS_SIGNING_P12_BASE64: ${{ secrets.MACOS_SIGNING_P12_BASE64 }}
-          MACOS_SIGNING_P12_PASSWORD: ${{ secrets.MACOS_SIGNING_P12_PASSWORD }}
-        run: |
-          identity="$(bash scripts/setup_macos_signing.sh)"
-          echo "MORNYE_CODE_SIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
-
-      # The Xcode "Embed Rust Backend" and "Embed FFmpeg" phases embed the
-      # library and the FFmpeg tools built above.
-      - name: Build macOS app
-        env:
-          MORNYE_SKIP_RUST_BUILD: "1"
-          MORNYE_REQUIRE_FFMPEG: "1"
-        run: |
-          flutter build macos --release --target lib/main.dart \
-            --dart-define="GIT_COMMIT=$(git rev-parse --short=8 HEAD)"
-
-      - name: Package disk image
-        env:
-          VERSION: ${{ needs.get-version.outputs.version }}
-        run: |
-          app="build/macos/Build/Products/Release/Mornye.app"
-          test -s "$app/Contents/Frameworks/libmornye_desktop.dylib"
-          for tool in ffmpeg ffprobe; do
-            test -x "$app/Contents/Resources/ffmpeg/$tool"
-            for arch in arm64 x86_64; do
-              lipo "$app/Contents/Resources/ffmpeg/$tool" -verify_arch "$arch"
-            done
-          done
-          bash scripts/package_macos_dmg.sh "$app" "build/desktop/Mornye-${VERSION}-macos-universal.dmg"
-          (cd build/desktop && shasum -a 256 Mornye-*.dmg > SHA256SUMS-macos.txt)
-
-      - name: Upload macOS artifact
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: desktop-release-macos
-          if-no-files-found: error
-          path: |
-            build/desktop/Mornye-*.dmg
-            build/desktop/SHA256SUMS-macos.txt
-
+  # Desktop builds package Linux x64 and Windows x64 installers and archives.
   build-linux:
     name: Build Linux (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
@@ -529,10 +291,6 @@ jobs:
             deb_arch: amd64
             flutter_arch: x64
             runner: ubuntu-22.04
-          - arch: aarch64
-            deb_arch: arm64
-            flutter_arch: arm64
-            runner: ubuntu-22.04-arm
 
     steps:
       - name: Checkout repository
@@ -572,23 +330,11 @@ jobs:
         run: bash scripts/fetch_desktop_ffmpeg.sh "linux-${{ matrix.flutter_arch }}"
 
       - name: Setup Flutter
-        if: matrix.flutter_arch == 'x64'
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           channel: "stable"
           flutter-version-file: .fvmrc
           cache: true
-
-      # Flutter publishes no Linux arm64 SDK archive; a clone of the release
-      # tag downloads the arm64 Dart SDK and engine on first run.
-      - name: Setup Flutter (arm64)
-        if: matrix.flutter_arch == 'arm64'
-        run: |
-          flutter_version="$(jq -r .flutter .fvmrc)"
-          git clone --depth 1 --branch "$flutter_version" \
-            https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
-          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
-          "$RUNNER_TEMP/flutter/bin/flutter" --version
 
       - name: Cache pub dependencies
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -659,9 +405,6 @@ jobs:
           - arch: x64
             runner: windows-2022
             rust_target: x86_64-pc-windows-msvc
-          - arch: arm64
-            runner: windows-11-arm
-            rust_target: aarch64-pc-windows-msvc
     needs: get-version
     # The release goes out without Windows assets if this job fails. Remove
     # once a release run of this job is green.
@@ -694,16 +437,11 @@ jobs:
         run: bash scripts/fetch_desktop_ffmpeg.sh windows-${{ matrix.arch }}
 
       - name: Setup Flutter
-        if: matrix.arch == 'x64'
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           channel: "stable"
           flutter-version-file: .fvmrc
           cache: true
-
-      - name: Setup native ARM64 Flutter
-        if: matrix.arch == 'arm64'
-        run: ./scripts/setup_flutter_windows_arm64.ps1
 
       - name: Cache pub dependencies
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -805,15 +543,10 @@ jobs:
             build/desktop/Mornye-*-portable.zip
             build/desktop/SHA256SUMS-windows-${{ matrix.arch }}.txt
 
-  # The phone release. Desktop packages are released separately in
-  # mornyeapp/Mornye-Desktop by create-desktop-release.
+  # Android and desktop packages publish through their separate release jobs.
   create-release:
     runs-on: ubuntu-latest
-    needs: [get-version, build-android, build-ios]
-    if: >-
-      ${{ !cancelled()
-      && needs.build-android.result == 'success'
-      && (needs.build-ios.result == 'success' || needs.build-ios.result == 'skipped' || needs.build-ios.result == 'failure') }}
+    needs: [get-version, build-android]
     permissions:
       contents: write
 
@@ -842,13 +575,6 @@ jobs:
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: android-apk
-          path: ./release
-
-      - name: Download iOS IPA
-        continue-on-error: true
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: ios-ipa
           path: ./release
 
       # The Android job's checksums are verified, then one SHA256SUMS.txt
@@ -891,14 +617,10 @@ jobs:
           - **arm32**: \`Mornye-${VERSION}-arm32.apk\` (older devices)
           - \`*.apk.idsig\`: V4 signatures for \`adb install --incremental\` only; normal installs do not need them
 
-          #### iOS
-          - **iOS**: \`Mornye-${VERSION}-ios-unsigned.ipa\` (sideload required)
-
           \`SHA256SUMS.txt\` lists the SHA-256 of every file above.
 
           ### Installation
           **Android**: Enable "Install from unknown sources" and install the APK
-          **iOS**: Use AltStore, Sideloadly, or similar tools to sideload the IPA
           FOOTER
 
           echo "Release body:"
@@ -921,11 +643,10 @@ jobs:
   # DESKTOP_RELEASES_PUBLIC is 'true', so nothing ships before testing ends.
   create-desktop-release:
     runs-on: ubuntu-latest
-    needs: [get-version, build-macos, build-linux, build-windows]
+    needs: [get-version, build-linux, build-windows]
     # build-windows may fail without blocking the release (continue-on-error).
     if: >-
       ${{ !cancelled()
-      && needs.build-macos.result == 'success'
       && needs.build-linux.result == 'success' }}
     permissions:
       contents: write
@@ -999,22 +720,18 @@ jobs:
               printf "| %s | \`%s\` | %s |\n" "$1" "$2" "$3" >> /tmp/release_body.txt
             fi
           }
-          desktop_row "macOS" "Mornye-${VERSION}-macos-universal.dmg" "Apple silicon and Intel, macOS 12 or later"
           desktop_row "Windows" "Mornye-${VERSION}-windows-x64-setup.exe" "Installer (x64), no administrator rights needed"
           desktop_row "Windows" "Mornye-${VERSION}-windows-x64-portable.zip" "Portable (x64): extract and run mornye.exe"
           desktop_row "Linux" "Mornye-${VERSION}-linux-x86_64.AppImage" "AppImage (x86_64), updates itself"
-          desktop_row "Linux" "Mornye-${VERSION}-linux-aarch64.AppImage" "AppImage (aarch64), updates itself"
           desktop_row "Linux" "Mornye-${VERSION}-linux-amd64.deb" "Debian/Ubuntu (amd64)"
-          desktop_row "Linux" "Mornye-${VERSION}-linux-arm64.deb" "Debian/Ubuntu (arm64)"
 
           cat >> /tmp/release_body.txt << FOOTER
 
           \`SHA256SUMS.txt\` lists the SHA-256 of every file above.
 
           ### Installation
-          **macOS**: Open the dmg and drag Mornye to Applications. Mornye is not notarized yet, so macOS blocks the first launch: open System Settings > Privacy & Security, scroll to Security and click "Open Anyway" next to the Mornye message, then confirm with "Open". Later updates open the new dmg for you.
           **Windows**: Run the setup. The installer is not code signed yet, so SmartScreen may warn: click "More info", then "Run anyway".
-          **Linux**: AppImage: \`chmod +x\` the file and run it. deb: \`sudo apt install ./Mornye-${VERSION}-linux-amd64.deb\` (or the arm64 file); deb installs update through new releases.
+          **Linux**: AppImage: \`chmod +x\` the file and run it. deb: \`sudo apt install ./Mornye-${VERSION}-linux-amd64.deb\`; deb installs update through new releases.
           FOOTER
 
           echo "Release body:"
@@ -1032,86 +749,6 @@ jobs:
           draft: ${{ vars.DESKTOP_RELEASES_PUBLIC != 'true' && secrets.MORNYE_DESKTOP_RELEASE_TOKEN != '' }}
           prerelease: ${{ needs.get-version.outputs.is_prerelease == 'true' }}
 
-  update-altstore:
-    runs-on: ubuntu-latest
-    needs: [get-version, build-ios, create-release]
-    # !cancelled() keeps an optional build-windows failure upstream of
-    # create-release from skipping this job.
-    if: ${{ !cancelled() && needs.create-release.result == 'success' && needs.get-version.outputs.is_prerelease != 'true' && needs.build-ios.result == 'success' }}
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout main branch
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: main
-
-      - name: Download iOS IPA
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: ios-ipa
-          path: ./release
-
-      - name: Update apps.json
-        env:
-          VERSION: ${{ needs.get-version.outputs.version }}
-          REPOSITORY: ${{ github.repository }}
-        run: |
-          VERSION_NUM="${VERSION#v}"
-          DATE=$(date -u +%Y-%m-%d)
-          IPA_FILE=$(find ./release -name "*ios*.ipa" | head -1)
-
-          if [ -z "$IPA_FILE" ]; then
-            echo "WARNING: IPA file not found, skipping apps.json update"
-            exit 0
-          fi
-
-          IPA_SIZE=$(stat -c%s "$IPA_FILE" 2>/dev/null || stat -f%z "$IPA_FILE")
-          BUNDLE_ID=$(python3 - "$IPA_FILE" <<'PY'
-          import plistlib
-          import sys
-          import zipfile
-
-          with zipfile.ZipFile(sys.argv[1]) as ipa:
-              info_path = next(name for name in ipa.namelist()
-                               if name.startswith("Payload/")
-                               and name.count("/") == 2
-                               and name.endswith(".app/Info.plist"))
-              print(plistlib.loads(ipa.read(info_path))["CFBundleIdentifier"])
-          PY
-          )
-
-          if [ ! -f apps.json ]; then
-            echo "WARNING: apps.json not found on main, skipping"
-            exit 0
-          fi
-
-          jq --arg ver "$VERSION_NUM" \
-             --arg bundle "$BUNDLE_ID" \
-             --arg date "$DATE" \
-             --arg url "https://github.com/${REPOSITORY}/releases/download/${VERSION}/Mornye-${VERSION}-ios-unsigned.ipa" \
-             --argjson size "$IPA_SIZE" \
-             '.apps[0].bundleIdentifier = $bundle | .apps[0].version = $ver | .apps[0].versionDate = $date | .apps[0].downloadURL = $url | .apps[0].size = $size' \
-             apps.json > apps.json.tmp && mv apps.json.tmp apps.json
-
-          echo "Updated apps.json:"
-          cat apps.json
-
-      - name: Commit and push
-        env:
-          VERSION: ${{ needs.get-version.outputs.version }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add apps.json
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "chore: update AltStore source to ${VERSION}"
-            git push
-          fi
-
   notify-telegram:
     runs-on: ubuntu-latest
     needs: [get-version, create-release]
@@ -1127,12 +764,6 @@ jobs:
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: android-apk
-          path: ./release
-
-      - name: Download iOS IPA
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: ios-ipa
           path: ./release
 
       - name: Generate changelog with git-cliff for Telegram
@@ -1222,15 +853,6 @@ jobs:
               -F chat_id="${TELEGRAM_CHANNEL_ID}" \
               -F document=@"${ARM32_APK}" \
               -F caption="Mornye ${VERSION} - arm32"
-          fi
-
-          IOS_IPA=$(find ./release -name "*ios*.ipa" | head -1)
-          if [ -f "$IOS_IPA" ]; then
-            echo "Uploading iOS IPA to Telegram..."
-            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
-              -F chat_id="${TELEGRAM_CHANNEL_ID}" \
-              -F document=@"${IOS_IPA}" \
-              -F caption="Mornye ${VERSION} - iOS (unsigned, sideload required)"
           fi
 
           echo "Telegram notification sent!"

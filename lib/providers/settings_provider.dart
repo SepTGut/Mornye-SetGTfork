@@ -664,6 +664,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
     _saveSettings();
   }
 
+  void setWindowsAudioDevice(String name) {
+    state = state.copyWith(windowsAudioDevice: name);
+    _saveSettings();
+  }
+
   void setAutoMixDuration(int seconds) {
     state = state.copyWith(autoMixDuration: autoMixDurationFromJson(seconds));
     _saveSettings();

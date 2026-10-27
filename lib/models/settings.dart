@@ -84,6 +84,7 @@ class AppSettings {
   final bool usbAllowFixedVolume;
   final bool dapExclusive;
   final bool windowsExclusiveOutput;
+  final String windowsAudioDevice;
   final bool autoplay;
   final bool autoplayPersonalization;
   final bool musicHaptics;
@@ -229,6 +230,7 @@ class AppSettings {
     this.usbAllowFixedVolume = false,
     this.dapExclusive = false,
     this.windowsExclusiveOutput = false,
+    this.windowsAudioDevice = 'auto',
     this.autoplay = false,
     this.autoplayPersonalization = true,
     this.musicHaptics = false,
@@ -352,6 +354,7 @@ class AppSettings {
     bool? usbAllowFixedVolume,
     bool? dapExclusive,
     bool? windowsExclusiveOutput,
+    String? windowsAudioDevice,
     bool? autoplay,
     bool? autoplayPersonalization,
     bool? musicHaptics,
@@ -471,6 +474,7 @@ class AppSettings {
       dapExclusive: dapExclusive ?? this.dapExclusive,
       windowsExclusiveOutput:
           windowsExclusiveOutput ?? this.windowsExclusiveOutput,
+      windowsAudioDevice: windowsAudioDevice ?? this.windowsAudioDevice,
       autoplay: autoplay ?? this.autoplay,
       autoplayPersonalization:
           autoplayPersonalization ?? this.autoplayPersonalization,

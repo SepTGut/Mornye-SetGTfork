@@ -2,11 +2,12 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:media_kit/media_kit.dart' show AudioDevice;
 import 'package:mornye/l10n/l10n.dart';
 import 'package:mornye/providers/settings_provider.dart';
 import 'package:mornye/services/music_playback_deck.dart';
 import 'package:mornye/services/playback_equalizer.dart'
-    show windowsExclusiveOutputStatus;
+    show windowsExclusiveOutputStatus, windowsAudioDevices;
 import 'package:mornye/services/music_player_service.dart'
     show resetAutoplayLearning;
 import 'package:mornye/screens/listening_statistics_screen.dart';
@@ -343,6 +344,64 @@ class _PlaybackSettingsPageState extends ConsumerState<PlaybackSettingsPage> {
             SliverToBoxAdapter(
               child: SettingsGroup(
                 children: [
+                  ValueListenableBuilder<List<AudioDevice>>(
+                    valueListenable: windowsAudioDevices,
+                    builder: (context, devices, _) {
+                      final selected = settings.windowsAudioDevice;
+                      final matches = devices
+                          .where((d) => d.name == selected)
+                          .toList();
+                      final selectedDevice = matches.isEmpty
+                          ? null
+                          : matches.first;
+                      return SettingsItem(
+                        icon: Icons.speaker,
+                        title: 'Output device',
+                        subtitle: selectedDevice == null
+                            ? (selected == 'auto'
+                                  ? 'System default'
+                                  : '$selected (unavailable)')
+                            : selected == 'auto' ||
+                                  selectedDevice.description.isEmpty
+                            ? (selected == 'auto'
+                                  ? 'System default'
+                                  : selectedDevice.name)
+                            : selectedDevice.description,
+                        onTap: () async {
+                          final choice = await showAppDialog<String>(
+                            context: context,
+                            builder: (context) => SimpleDialog(
+                              title: const Text('Output device'),
+                              children: [
+                                SimpleDialogOption(
+                                  onPressed: () =>
+                                      Navigator.pop(context, 'auto'),
+                                  child: const Text('System default'),
+                                ),
+                                for (final device in devices.where(
+                                  (d) => d.name != 'auto',
+                                ))
+                                  SimpleDialogOption(
+                                    onPressed: () =>
+                                        Navigator.pop(context, device.name),
+                                    child: Text(
+                                      device.description.isEmpty
+                                          ? device.name
+                                          : device.description,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          );
+                          if (choice != null && context.mounted) {
+                            ref
+                                .read(settingsProvider.notifier)
+                                .setWindowsAudioDevice(choice);
+                          }
+                        },
+                      );
+                    },
+                  ),
                   ValueListenableBuilder<String?>(
                     valueListenable: windowsExclusiveOutputStatus,
                     builder: (context, status, _) => SettingsSwitchItem(

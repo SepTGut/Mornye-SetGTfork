@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:media_kit/media_kit.dart' show AudioDevice;
 import 'package:mornye/models/equalizer_settings.dart';
 import 'package:mornye/services/media_kit_playback_deck.dart';
 import 'package:mornye/services/music_playback_deck.dart';
@@ -19,6 +20,10 @@ void main() {
     playbackEqualizer.value = const EqualizerSettings();
     playbackEqualizerError.value = null;
     playbackOutputVolume.value = 1;
+    windowsExclusiveOutput.value = false;
+    windowsAudioDevice.value = 'auto';
+    windowsAudioDevices.value = const [AudioDevice('auto', '')];
+    windowsExclusiveOutputStatus.value = null;
     engine = FakeMpvEngine();
     deck = MediaKitPlaybackDeck(playerId: 'mpv-test', engine: engine);
   });
@@ -27,7 +32,69 @@ void main() {
     await deck.dispose();
     playbackEqualizer.value = const EqualizerSettings();
     playbackOutputVolume.value = 1;
+    windowsExclusiveOutput.value = false;
+    windowsAudioDevice.value = 'auto';
+    windowsAudioDevices.value = const [AudioDevice('auto', '')];
+    windowsExclusiveOutputStatus.value = null;
   });
+
+  test('selected Windows device is used for exclusive playback', () async {
+    await deck.dispose();
+    engine = FakeMpvEngine();
+    deck = MediaKitPlaybackDeck(playerId: 'music-player', engine: engine);
+    windowsExclusiveOutput.value = true;
+    windowsAudioDevice.value = 'wasapi/{endpoint-id}';
+    engine.audioDeviceEvents.add(const [
+      AudioDevice('auto', ''),
+      AudioDevice('wasapi/{endpoint-id}', 'KTH02H20'),
+    ]);
+    await Future<void>.delayed(Duration.zero);
+
+    await deck.configureOutput();
+    await deck.setFileSource('/music/song.flac');
+
+    expect(engine.properties['audio-device'], 'wasapi/{endpoint-id}');
+    expect(engine.properties['audio-exclusive'], 'yes');
+    expect(deck.isExclusiveOutputActive, isTrue);
+    expect(windowsExclusiveOutputStatus.value, 'active');
+  });
+
+  test('unavailable selected device falls back to shared output', () async {
+    await deck.dispose();
+    engine = FakeMpvEngine();
+    deck = MediaKitPlaybackDeck(playerId: 'music-player', engine: engine);
+    windowsExclusiveOutput.value = true;
+    windowsAudioDevice.value = 'wasapi/missing';
+    await deck.configureOutput();
+    await deck.setFileSource('/music/song.flac');
+
+    expect(deck.isExclusiveOutputActive, isFalse);
+    expect(deck.exclusiveOutputFallbackReason, contains('unavailable'));
+    expect(engine.properties['audio-device'], 'auto');
+    expect(engine.properties['audio-exclusive'], 'no');
+    expect(windowsExclusiveOutputStatus.value, 'fallback');
+  });
+
+  test(
+    'reports each negotiated output rate without fixing a target rate',
+    () async {
+      engine.properties['audio-out-params'] =
+          '{"samplerate":44100,"format":"s16"}';
+      await deck.setFileSource('/music/cd.flac');
+      expect(deck.outputParams, contains('44100'));
+
+      engine.properties['audio-out-params'] =
+          '{"samplerate":96000,"format":"s24"}';
+      await deck.setFileSource('/music/hires.flac');
+      expect(deck.outputParams, contains('96000'));
+      expect(
+        engine.calls.where(
+          (call) => call.length >= 2 && call[1] == 'audio-samplerate',
+        ),
+        isEmpty,
+      );
+    },
+  );
 
   test('loads a file paused and reports its duration', () async {
     final durations = <Duration>[];

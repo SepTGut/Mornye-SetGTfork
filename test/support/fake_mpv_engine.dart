@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:media_kit/media_kit.dart' show AudioDevice;
 import 'package:mornye/services/media_kit_playback_deck.dart';
 
 /// An in-memory libmpv for `MediaKitPlaybackDeck` tests on any host.
@@ -9,6 +10,7 @@ class FakeMpvEngine implements MpvEngine {
   final completedEvents = StreamController<bool>.broadcast();
   final durationEvents = StreamController<Duration>.broadcast();
   final sampleRateEvents = StreamController<int>.broadcast();
+  final audioDeviceEvents = StreamController<List<AudioDevice>>.broadcast();
   final errorEvents = StreamController<MpvLogError>.broadcast();
   @override
   Duration position = Duration.zero;
@@ -26,6 +28,8 @@ class FakeMpvEngine implements MpvEngine {
   Stream<Duration> get duration => durationEvents.stream;
   @override
   Stream<int> get sampleRate => sampleRateEvents.stream;
+  @override
+  Stream<List<AudioDevice>> get audioDevices => audioDeviceEvents.stream;
   @override
   Stream<MpvLogError> get errors => errorEvents.stream;
 
@@ -83,6 +87,7 @@ class FakeMpvEngine implements MpvEngine {
     await completedEvents.close();
     await durationEvents.close();
     await sampleRateEvents.close();
+    await audioDeviceEvents.close();
     await errorEvents.close();
   }
 

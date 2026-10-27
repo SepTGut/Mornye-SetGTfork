@@ -174,6 +174,7 @@ class MusicPlayerRuntime {
     _settings = settings;
     windowsExclusiveOutput.value =
         Platform.isWindows && settings.windowsExclusiveOutput;
+    windowsAudioDevice.value = settings.windowsAudioDevice;
     _handler?.applySettings(previous);
   }
 

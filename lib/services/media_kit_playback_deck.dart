@@ -23,6 +23,7 @@ abstract interface class MpvEngine {
   Stream<bool> get completed;
   Stream<Duration> get duration;
   Stream<int> get sampleRate;
+  Stream<List<AudioDevice>> get audioDevices;
   Stream<MpvLogError> get errors;
   Duration get position;
 
@@ -59,6 +60,8 @@ class MediaKitEngine implements MpvEngine {
       // Room for an equalizer preamp of +12 dB applied through the volume
       // when the libmpv build has no volume filter.
       setProperty('volume-max', '200'),
+      // Reopen output at a new track's sample rate when needed.
+      setProperty('gapless-audio', 'weak'),
     ]);
   }
 
@@ -74,6 +77,8 @@ class MediaKitEngine implements MpvEngine {
       .map((params) => params.sampleRate)
       .where((rate) => rate != null && rate > 0)
       .cast<int>();
+  @override
+  Stream<List<AudioDevice>> get audioDevices => _player.stream.audioDevices;
   @override
   Stream<MpvLogError> get errors => _player.stream.log
       .where((log) => log.level == 'error')
@@ -150,6 +155,9 @@ class MediaKitPlaybackDeck implements PlaybackDeck {
     playbackEqualizer.addListener(_equalizerChanged);
     playbackOutputVolume.addListener(_outputVolumeChanged);
     _subscriptions.addAll([
+      _engine.audioDevices.listen((devices) {
+        if (playerId == 'music-player') windowsAudioDevices.value = devices;
+      }),
       _engine.completed.listen((done) {
         if (!done || _disposed || _state != PlaybackDeckState.playing) return;
         _setState(PlaybackDeckState.completed);
@@ -355,16 +363,45 @@ class MediaKitPlaybackDeck implements PlaybackDeck {
           ? 'starting'
           : null;
     }
+    final selectedDevice = _exclusiveRequested
+        ? windowsAudioDevice.value
+        : 'auto';
+    var deviceToApply = selectedDevice;
+    if (_exclusiveRequested && selectedDevice != 'auto') {
+      final available = windowsAudioDevices.value.any(
+        (device) => device.name == selectedDevice,
+      );
+      if (!available) {
+        _exclusiveAttemptAllowed = false;
+        _exclusiveFallbackReason = 'Selected audio device is unavailable';
+        deviceToApply = 'auto';
+      }
+    }
+    var deviceResult = -1;
+    try {
+      deviceResult = await _engine.setProperty('audio-device', deviceToApply);
+    } catch (error) {
+      _log.w('Failed to select audio output device: $error');
+    }
+    if (deviceResult < 0 && _exclusiveRequested) {
+      _exclusiveAttemptAllowed = false;
+      _exclusiveFallbackReason = 'libmpv rejected the selected audio device';
+      try {
+        await _engine.setProperty('audio-device', 'auto');
+      } catch (error) {
+        _log.w('Failed to restore the system audio device: $error');
+      }
+    }
     var result = -1;
     try {
       result = await _engine.setProperty(
         'audio-exclusive',
-        _exclusiveRequested ? 'yes' : 'no',
+        _exclusiveRequested && _exclusiveAttemptAllowed ? 'yes' : 'no',
       );
     } catch (error) {
       _exclusiveFallbackReason = error.toString();
     }
-    if (_exclusiveRequested && result < 0) {
+    if (_exclusiveRequested && (!_exclusiveAttemptAllowed || result < 0)) {
       _exclusiveAttemptAllowed = false;
       _exclusiveFallbackReason ??= 'libmpv rejected WASAPI exclusive mode';
       if (playerId == 'music-player') {

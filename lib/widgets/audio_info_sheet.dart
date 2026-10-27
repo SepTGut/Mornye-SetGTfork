@@ -12,7 +12,8 @@ import 'package:mornye/services/audio_route_info.dart';
 import 'package:mornye/services/music_playback_deck.dart';
 import 'package:mornye/services/music_player_service.dart';
 import 'package:mornye/services/platform_bridge.dart';
-import 'package:mornye/services/playback_equalizer.dart';
+import 'package:mornye/services/playback_equalizer.dart'
+    show playbackEqualizer, windowsAudioDevices;
 import 'package:mornye/theme/app_tokens.dart';
 import 'package:mornye/theme/mornye_theme.dart';
 import 'package:mornye/utils/int_utils.dart';
@@ -515,6 +516,16 @@ class _AudioFacts {
     return [
       _Fact(l10n.audioInfoPlayer, l10n.audioInfoPlayerValue),
       _Fact(l10n.audioInfoSignalPath, signalPath),
+      if (Platform.isWindows)
+        _Fact(
+          'WASAPI exclusive',
+          windowsExclusive
+              ? 'Active'
+              : windowsExclusiveRequested
+              ? 'Shared-mode fallback'
+              : 'Off',
+        ),
+      if (Platform.isWindows) _Fact('Output device', _windowsOutputDeviceName),
       ?fallbackFact,
       if (_outputFormat case final params?)
         _Fact(l10n.audioInfoOutputFormat, params),
@@ -569,6 +580,15 @@ class _AudioFacts {
     ).firstMatch(params);
     final rate = int.tryParse(match?.group(1) ?? '');
     return rate != null && rate > 0 ? rate : null;
+  }
+
+  String get _windowsOutputDeviceName {
+    final matches = windowsAudioDevices.value
+        .where((device) => device.name == settings.windowsAudioDevice)
+        .toList();
+    if (matches.isEmpty) return settings.windowsAudioDevice;
+    final device = matches.first;
+    return device.description.isEmpty ? device.name : device.description;
   }
 
   String? get _outputFormat {
