@@ -52,10 +52,7 @@ class SmbEntry {
 }
 
 class SmbShare {
-  const SmbShare({
-    required this.name,
-    required this.isDisk,
-  });
+  const SmbShare({required this.name, required this.isDisk});
 
   final String name;
   final bool isDisk;

@@ -155,7 +155,8 @@ class _PlaybackSettingsPageState extends ConsumerState<PlaybackSettingsPage> {
                   PlaybackNormalizationSettings(
                     enabled:
                         !settings.usbBitPerfect &&
-                        !(Platform.isWindows && settings.windowsExclusiveOutput),
+                        !(Platform.isWindows &&
+                            settings.windowsExclusiveOutput),
                   ),
                 if (!isDesktopPlatform) ...[
                   SettingsSwitchItem(
@@ -352,8 +353,7 @@ class _PlaybackSettingsPageState extends ConsumerState<PlaybackSettingsPage> {
                         if (settings.windowsExclusiveOutput)
                           switch (status) {
                             'active' => context.l10n.windowsExclusiveActive,
-                            'fallback' =>
-                              context.l10n.windowsExclusiveFallback,
+                            'fallback' => context.l10n.windowsExclusiveFallback,
                             _ => context.l10n.windowsExclusivePending,
                           },
                       ].join('\n\n'),

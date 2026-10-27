@@ -31,7 +31,8 @@ class NtlmContext {
 
   static Uint8List createType1Message({String domain = ''}) {
     final domainBytes = _encodeUtf16Le(domain);
-    const flags = flagNegotiateUnicode |
+    const flags =
+        flagNegotiateUnicode |
         flagRequestTarget |
         flagNegotiateNtlm |
         flagNegotiateAlwaysSign |
@@ -141,7 +142,8 @@ class NtlmContext {
       bd.setUint32(56, headerLen, Endian.little);
 
       // Negotiated Flags with ANONYMOUS bit
-      const anonFlags = flagNegotiateUnicode |
+      const anonFlags =
+          flagNegotiateUnicode |
           flagNegotiateNtlm |
           flagNegotiateExtendedSecurity |
           flagNegotiateAnonymous;
@@ -161,8 +163,7 @@ class NtlmContext {
     if (msg.length >= 48) {
       final targetInfoLen = bd2.getUint16(40, Endian.little);
       final targetInfoOffset = bd2.getUint32(44, Endian.little);
-      if (targetInfoLen > 0 &&
-          targetInfoOffset + targetInfoLen <= msg.length) {
+      if (targetInfoLen > 0 && targetInfoOffset + targetInfoLen <= msg.length) {
         targetInfo = Uint8List.sublistView(
           msg,
           targetInfoOffset,
@@ -193,7 +194,11 @@ class NtlmContext {
     final tempBuilder = BytesBuilder(copy: false);
     final tempHeader = Uint8List(28);
     final thBd = ByteData.sublistView(tempHeader);
-    thBd.setUint32(0, 0x00000101, Endian.big); // 0x01, 0x01, 0x00, 0x00 signature
+    thBd.setUint32(
+      0,
+      0x00000101,
+      Endian.big,
+    ); // 0x01, 0x01, 0x00, 0x00 signature
     thBd.setUint32(4, 0, Endian.little); // Reserved
     thBd.setUint64(8, fileTime, Endian.little); // Timestamp
     tempHeader.setRange(16, 24, clientChallenge);
@@ -229,7 +234,11 @@ class NtlmContext {
     // LM response = HMAC-MD5(ntlm2Hash, server_challenge + client_challenge) + client_challenge
     final challengeAndClient = Uint8List(serverChallenge.length + 8);
     challengeAndClient.setRange(0, serverChallenge.length, serverChallenge);
-    challengeAndClient.setRange(serverChallenge.length, challengeAndClient.length, clientChallenge);
+    challengeAndClient.setRange(
+      serverChallenge.length,
+      challengeAndClient.length,
+      clientChallenge,
+    );
     final lmProof = Uint8List.fromList(
       Hmac(md5, ntlm2Hash).convert(challengeAndClient).bytes,
     );
@@ -304,7 +313,8 @@ class NtlmContext {
     bd.setUint32(56, 0, Endian.little);
 
     // Negotiated Flags
-    const flags = flagNegotiateUnicode |
+    const flags =
+        flagNegotiateUnicode |
         flagNegotiateNtlm |
         flagNegotiateExtendedSecurity |
         flagNegotiateAlwaysSign |
@@ -322,10 +332,7 @@ class NtlmContext {
     out.setRange(lmOffset, lmOffset + lmResponse.length, lmResponse);
     out.setRange(ntOffset, ntOffset + ntResponse.length, ntResponse);
 
-    return NtlmResult(
-      authenticateMessage: out,
-      sessionBaseKey: sessionBaseKey,
-    );
+    return NtlmResult(authenticateMessage: out, sessionBaseKey: sessionBaseKey);
   }
 
   static Uint8List _encodeUtf16Le(String text) {

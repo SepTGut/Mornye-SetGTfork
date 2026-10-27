@@ -206,14 +206,10 @@ class Smb1Transport {
       timeout,
       onTimeout: () {
         _pendingReads.remove(completer);
-        throw const SmbException(
-          'SMB read timed out',
-          SmbErrorType.timeout,
-        );
+        throw const SmbException('SMB read timed out', SmbErrorType.timeout);
       },
     );
   }
-
 
   static Uint8List _encodeNetBiosName(String name) {
     final upper = name.toUpperCase().padRight(16, ' ').substring(0, 16);

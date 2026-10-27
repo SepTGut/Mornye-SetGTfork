@@ -12,7 +12,8 @@ void main() {
       final packet = Smb1Packet(
         command: Smb1Packet.cmdNegotiate,
         status: NtStatus.success,
-        flags: Smb1Packet.flagCaseInsensitive | Smb1Packet.flagCanonicalizedPaths,
+        flags:
+            Smb1Packet.flagCaseInsensitive | Smb1Packet.flagCanonicalizedPaths,
         flags2: Smb1Packet.flag2Unicode | Smb1Packet.flag2NtStatus,
         tid: 10,
         pidLow: 1234,
@@ -42,14 +43,19 @@ void main() {
       expect(encoded.take(4), [0xFF, 0x53, 0x4D, 0x42]);
       expect(req.command, Smb1Packet.cmdNegotiate);
       expect(req.bytes.first, 0x02);
-      final dialectStr = ascii.decode(req.bytes.sublist(1, req.bytes.length - 1));
+      final dialectStr = ascii.decode(
+        req.bytes.sublist(1, req.bytes.length - 1),
+      );
       expect(dialectStr, 'NT LM 0.12');
     });
 
     test('NTSTATUS status codes mapping', () {
       expect(NtStatus.toSmbErrorType(NtStatus.logonFailure), isA<Object>());
       expect(NtStatus.describe(NtStatus.accessDenied), 'STATUS_ACCESS_DENIED');
-      expect(NtStatus.describe(NtStatus.objectNameNotFound), 'STATUS_OBJECT_NAME_NOT_FOUND');
+      expect(
+        NtStatus.describe(NtStatus.objectNameNotFound),
+        'STATUS_OBJECT_NAME_NOT_FOUND',
+      );
     });
   });
 }

@@ -45,206 +45,220 @@ class MockFtpServer {
         .transform(utf8.decoder)
         .transform(const LineSplitter())
         .listen((line) async {
-      final trimmed = line.trim();
-      if (trimmed.isEmpty) return;
+          final trimmed = line.trim();
+          if (trimmed.isEmpty) return;
 
-      final spaceIdx = trimmed.indexOf(' ');
-      final cmd = (spaceIdx < 0 ? trimmed : trimmed.substring(0, spaceIdx))
-          .toUpperCase();
-      final arg = spaceIdx < 0 ? '' : trimmed.substring(spaceIdx + 1).trim();
+          final spaceIdx = trimmed.indexOf(' ');
+          final cmd = (spaceIdx < 0 ? trimmed : trimmed.substring(0, spaceIdx))
+              .toUpperCase();
+          final arg = spaceIdx < 0
+              ? ''
+              : trimmed.substring(spaceIdx + 1).trim();
 
-      switch (cmd) {
-        case 'USER':
-          reply('331 Password required');
-          break;
-        case 'PASS':
-          if (failAuth) {
-            reply('530 Login incorrect');
-          } else {
-            reply('230 User logged in');
-          }
-          break;
-        case 'FEAT':
-          socket.write(
-            '211-Features:\r\n MLSD\r\n REST STREAM\r\n SIZE\r\n MDTM\r\n211 End\r\n',
-          );
-          await socket.flush();
-          break;
-        case 'TYPE':
-          reply('200 Type set to $arg');
-          break;
-        case 'EPSV':
-          if (usePasvOnly) {
-            reply('500 EPSV not understood');
-          } else {
-            _dataServer = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
-            final completer = Completer<Socket>();
-            _dataSocketCompleter = completer;
-            _dataServer!.listen((s) {
-              if (!completer.isCompleted) completer.complete(s);
-            });
-            reply('229 Entering Extended Passive Mode (|||${_dataServer!.port}|)');
-          }
-          break;
-        case 'PASV':
-          _dataServer = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
-          final completer = Completer<Socket>();
-          _dataSocketCompleter = completer;
-          _dataServer!.listen((s) {
-            if (!completer.isCompleted) completer.complete(s);
-          });
-          final p1 = _dataServer!.port ~/ 256;
-          final p2 = _dataServer!.port % 256;
-          final ip = returnFakePasvIp ? '10,99,99,99' : '127,0,0,1';
-          reply('227 Entering Passive Mode ($ip,$p1,$p2)');
-          break;
-        case 'MLSD':
-          reply('150 Opening data connection');
-          final dataSocket = await _dataSocketCompleter!.future;
-          final normalizedArg = arg.replaceAll('\\', '/');
-          final targetDir = normalizedArg.isEmpty || normalizedArg == '/'
-              ? '/'
-              : (normalizedArg.endsWith('/') ? normalizedArg : '$normalizedArg/');
-          final buffer = StringBuffer();
-          buffer.write('type=cdir; .\r\n');
-          buffer.write('type=pdir; ..\r\n');
-
-          for (final dir in directories) {
-            if (dir == targetDir || dir == '/') continue;
-            final parent = dir.substring(0, dir.lastIndexOf('/') + 1);
-            if (parent == targetDir) {
-              final name = dir.substring(dir.lastIndexOf('/') + 1);
-              buffer.write('type=dir; $name\r\n');
-            }
-          }
-          for (final file in files.keys) {
-            final parent = file.substring(0, file.lastIndexOf('/') + 1);
-            if (parent == targetDir) {
-              final name = file.substring(file.lastIndexOf('/') + 1);
-              buffer.write(
-                'type=file;size=${files[file]!.length};modify=20261027120000; $name\r\n',
+          switch (cmd) {
+            case 'USER':
+              reply('331 Password required');
+              break;
+            case 'PASS':
+              if (failAuth) {
+                reply('530 Login incorrect');
+              } else {
+                reply('230 User logged in');
+              }
+              break;
+            case 'FEAT':
+              socket.write(
+                '211-Features:\r\n MLSD\r\n REST STREAM\r\n SIZE\r\n MDTM\r\n211 End\r\n',
               );
-            }
+              await socket.flush();
+              break;
+            case 'TYPE':
+              reply('200 Type set to $arg');
+              break;
+            case 'EPSV':
+              if (usePasvOnly) {
+                reply('500 EPSV not understood');
+              } else {
+                _dataServer = await ServerSocket.bind(
+                  InternetAddress.loopbackIPv4,
+                  0,
+                );
+                final completer = Completer<Socket>();
+                _dataSocketCompleter = completer;
+                _dataServer!.listen((s) {
+                  if (!completer.isCompleted) completer.complete(s);
+                });
+                reply(
+                  '229 Entering Extended Passive Mode (|||${_dataServer!.port}|)',
+                );
+              }
+              break;
+            case 'PASV':
+              _dataServer = await ServerSocket.bind(
+                InternetAddress.loopbackIPv4,
+                0,
+              );
+              final completer = Completer<Socket>();
+              _dataSocketCompleter = completer;
+              _dataServer!.listen((s) {
+                if (!completer.isCompleted) completer.complete(s);
+              });
+              final p1 = _dataServer!.port ~/ 256;
+              final p2 = _dataServer!.port % 256;
+              final ip = returnFakePasvIp ? '10,99,99,99' : '127,0,0,1';
+              reply('227 Entering Passive Mode ($ip,$p1,$p2)');
+              break;
+            case 'MLSD':
+              reply('150 Opening data connection');
+              final dataSocket = await _dataSocketCompleter!.future;
+              final normalizedArg = arg.replaceAll('\\', '/');
+              final targetDir = normalizedArg.isEmpty || normalizedArg == '/'
+                  ? '/'
+                  : (normalizedArg.endsWith('/')
+                        ? normalizedArg
+                        : '$normalizedArg/');
+              final buffer = StringBuffer();
+              buffer.write('type=cdir; .\r\n');
+              buffer.write('type=pdir; ..\r\n');
+
+              for (final dir in directories) {
+                if (dir == targetDir || dir == '/') continue;
+                final parent = dir.substring(0, dir.lastIndexOf('/') + 1);
+                if (parent == targetDir) {
+                  final name = dir.substring(dir.lastIndexOf('/') + 1);
+                  buffer.write('type=dir; $name\r\n');
+                }
+              }
+              for (final file in files.keys) {
+                final parent = file.substring(0, file.lastIndexOf('/') + 1);
+                if (parent == targetDir) {
+                  final name = file.substring(file.lastIndexOf('/') + 1);
+                  buffer.write(
+                    'type=file;size=${files[file]!.length};modify=20261027120000; $name\r\n',
+                  );
+                }
+              }
+              dataSocket.write(buffer.toString());
+              await dataSocket.flush();
+              await dataSocket.close();
+              await _dataServer?.close();
+              _dataServer = null;
+              reply('226 Transfer complete');
+              break;
+            case 'SIZE':
+              final normalized = arg.startsWith('/') ? arg : '/$arg';
+              if (files.containsKey(normalized)) {
+                reply('213 ${files[normalized]!.length}');
+              } else {
+                reply('550 Not a regular file');
+              }
+              break;
+            case 'MDTM':
+              final normalized = arg.startsWith('/') ? arg : '/$arg';
+              if (files.containsKey(normalized)) {
+                reply('213 20261027120000');
+              } else {
+                reply('550 File not found');
+              }
+              break;
+            case 'CWD':
+              final normalized = arg.endsWith('/') ? arg : '$arg/';
+              final withSlash = arg.startsWith('/') ? arg : '/$arg';
+              final withSlashEnding = normalized.startsWith('/')
+                  ? normalized
+                  : '/$normalized';
+              if (directories.contains(arg) ||
+                  directories.contains(normalized) ||
+                  directories.contains(withSlash) ||
+                  directories.contains(withSlashEnding)) {
+                reply('250 Directory changed');
+              } else {
+                reply('550 Directory not found');
+              }
+              break;
+            case 'PWD':
+              reply('257 "/" is current directory');
+              break;
+            case 'REST':
+              _pendingRest = int.tryParse(arg) ?? 0;
+              reply('350 Restarting at $_pendingRest');
+              break;
+            case 'RETR':
+              final normalized = arg.startsWith('/') ? arg : '/$arg';
+              if (!files.containsKey(normalized)) {
+                reply('550 File not found');
+                break;
+              }
+              reply('150 Opening data connection');
+              final dataSocket = await _dataSocketCompleter!.future;
+              final data = files[normalized]!;
+              if (_pendingRest < data.length) {
+                dataSocket.add(data.sublist(_pendingRest));
+              }
+              _pendingRest = 0;
+              await dataSocket.flush();
+              await dataSocket.close();
+              await _dataServer?.close();
+              _dataServer = null;
+              reply('226 Transfer complete');
+              break;
+            case 'STOR':
+              reply('150 Opening data connection');
+              final dataSocket = await _dataSocketCompleter!.future;
+              final bytes = BytesBuilder();
+              await for (final chunk in dataSocket) {
+                bytes.add(chunk);
+              }
+              final normalized = arg.startsWith('/') ? arg : '/$arg';
+              files[normalized] = bytes.takeBytes();
+              await dataSocket.close();
+              await _dataServer?.close();
+              _dataServer = null;
+              reply('226 Transfer complete');
+              break;
+            case 'RNFR':
+              final normalized = arg.startsWith('/') ? arg : '/$arg';
+              if (files.containsKey(normalized)) {
+                _rnfrPath = normalized;
+                reply('350 Ready for destination');
+              } else {
+                reply('550 File not found');
+              }
+              break;
+            case 'RNTO':
+              final normalized = arg.startsWith('/') ? arg : '/$arg';
+              if (_rnfrPath != null && files.containsKey(_rnfrPath)) {
+                files[normalized] = files.remove(_rnfrPath)!;
+                _rnfrPath = null;
+                reply('250 Rename successful');
+              } else {
+                reply('550 Rename failed');
+              }
+              break;
+            case 'DELE':
+              final normalized = arg.startsWith('/') ? arg : '/$arg';
+              if (denyDelete) {
+                reply('550 Permission denied');
+              } else if (files.containsKey(normalized)) {
+                files.remove(normalized);
+                reply('250 File deleted');
+              } else {
+                reply('550 File not found');
+              }
+              break;
+            case 'MKD':
+              final normalized = arg.startsWith('/') ? arg : '/$arg';
+              directories.add(normalized);
+              reply('257 "$normalized" created');
+              break;
+            case 'QUIT':
+              reply('221 Goodbye');
+              break;
+            default:
+              reply('502 Command not implemented');
+              break;
           }
-          dataSocket.write(buffer.toString());
-          await dataSocket.flush();
-          await dataSocket.close();
-          await _dataServer?.close();
-          _dataServer = null;
-          reply('226 Transfer complete');
-          break;
-        case 'SIZE':
-          final normalized = arg.startsWith('/') ? arg : '/$arg';
-          if (files.containsKey(normalized)) {
-            reply('213 ${files[normalized]!.length}');
-          } else {
-            reply('550 Not a regular file');
-          }
-          break;
-        case 'MDTM':
-          final normalized = arg.startsWith('/') ? arg : '/$arg';
-          if (files.containsKey(normalized)) {
-            reply('213 20261027120000');
-          } else {
-            reply('550 File not found');
-          }
-          break;
-        case 'CWD':
-          final normalized = arg.endsWith('/') ? arg : '$arg/';
-          final withSlash = arg.startsWith('/') ? arg : '/$arg';
-          final withSlashEnding = normalized.startsWith('/') ? normalized : '/$normalized';
-          if (directories.contains(arg) ||
-              directories.contains(normalized) ||
-              directories.contains(withSlash) ||
-              directories.contains(withSlashEnding)) {
-            reply('250 Directory changed');
-          } else {
-            reply('550 Directory not found');
-          }
-          break;
-        case 'PWD':
-          reply('257 "/" is current directory');
-          break;
-        case 'REST':
-          _pendingRest = int.tryParse(arg) ?? 0;
-          reply('350 Restarting at $_pendingRest');
-          break;
-        case 'RETR':
-          final normalized = arg.startsWith('/') ? arg : '/$arg';
-          if (!files.containsKey(normalized)) {
-            reply('550 File not found');
-            break;
-          }
-          reply('150 Opening data connection');
-          final dataSocket = await _dataSocketCompleter!.future;
-          final data = files[normalized]!;
-          if (_pendingRest < data.length) {
-            dataSocket.add(data.sublist(_pendingRest));
-          }
-          _pendingRest = 0;
-          await dataSocket.flush();
-          await dataSocket.close();
-          await _dataServer?.close();
-          _dataServer = null;
-          reply('226 Transfer complete');
-          break;
-        case 'STOR':
-          reply('150 Opening data connection');
-          final dataSocket = await _dataSocketCompleter!.future;
-          final bytes = BytesBuilder();
-          await for (final chunk in dataSocket) {
-            bytes.add(chunk);
-          }
-          final normalized = arg.startsWith('/') ? arg : '/$arg';
-          files[normalized] = bytes.takeBytes();
-          await dataSocket.close();
-          await _dataServer?.close();
-          _dataServer = null;
-          reply('226 Transfer complete');
-          break;
-        case 'RNFR':
-          final normalized = arg.startsWith('/') ? arg : '/$arg';
-          if (files.containsKey(normalized)) {
-            _rnfrPath = normalized;
-            reply('350 Ready for destination');
-          } else {
-            reply('550 File not found');
-          }
-          break;
-        case 'RNTO':
-          final normalized = arg.startsWith('/') ? arg : '/$arg';
-          if (_rnfrPath != null && files.containsKey(_rnfrPath)) {
-            files[normalized] = files.remove(_rnfrPath)!;
-            _rnfrPath = null;
-            reply('250 Rename successful');
-          } else {
-            reply('550 Rename failed');
-          }
-          break;
-        case 'DELE':
-          final normalized = arg.startsWith('/') ? arg : '/$arg';
-          if (denyDelete) {
-            reply('550 Permission denied');
-          } else if (files.containsKey(normalized)) {
-            files.remove(normalized);
-            reply('250 File deleted');
-          } else {
-            reply('550 File not found');
-          }
-          break;
-        case 'MKD':
-          final normalized = arg.startsWith('/') ? arg : '/$arg';
-          directories.add(normalized);
-          reply('257 "$normalized" created');
-          break;
-        case 'QUIT':
-          reply('221 Goodbye');
-          break;
-        default:
-          reply('502 Command not implemented');
-          break;
-      }
-    });
+        });
   }
 }
 
@@ -279,11 +293,7 @@ void main() {
         password: 'bad',
       ),
       throwsA(
-        isA<SmbException>().having(
-          (e) => e.type,
-          'type',
-          SmbErrorType.auth,
-        ),
+        isA<SmbException>().having((e) => e.type, 'type', SmbErrorType.auth),
       ),
     );
   });
@@ -306,26 +316,29 @@ void main() {
     await client.close();
   });
 
-  test('FtpClient stat returns correct attributes for files and directories', () async {
-    server.files['/Music/track.flac'] = Uint8List(1024);
+  test(
+    'FtpClient stat returns correct attributes for files and directories',
+    () async {
+      server.files['/Music/track.flac'] = Uint8List(1024);
 
-    final fileClient = await FtpClient.connect(
-      Uri.parse('ftp://127.0.0.1:${server.port}/Music/track.flac'),
-    );
-    final fileStat = await fileClient.stat();
-    expect(fileStat.isFile, isTrue);
-    expect(fileStat.isDirectory, isFalse);
-    expect(fileStat.size, 1024);
-    await fileClient.close();
+      final fileClient = await FtpClient.connect(
+        Uri.parse('ftp://127.0.0.1:${server.port}/Music/track.flac'),
+      );
+      final fileStat = await fileClient.stat();
+      expect(fileStat.isFile, isTrue);
+      expect(fileStat.isDirectory, isFalse);
+      expect(fileStat.size, 1024);
+      await fileClient.close();
 
-    final dirClient = await FtpClient.connect(
-      Uri.parse('ftp://127.0.0.1:${server.port}/Music/Albums'),
-    );
-    final dirStat = await dirClient.stat();
-    expect(dirStat.isFile, isFalse);
-    expect(dirStat.isDirectory, isTrue);
-    await dirClient.close();
-  });
+      final dirClient = await FtpClient.connect(
+        Uri.parse('ftp://127.0.0.1:${server.port}/Music/Albums'),
+      );
+      final dirStat = await dirClient.stat();
+      expect(dirStat.isFile, isFalse);
+      expect(dirStat.isDirectory, isTrue);
+      await dirClient.close();
+    },
+  );
 
   test('FtpClient reads full file and byte range with REST', () async {
     final payload = Uint8List.fromList(List.generate(100, (i) => i));
@@ -345,59 +358,63 @@ void main() {
       Uri.parse('ftp://127.0.0.1:${server.port}/Music/test.bin'),
     );
     final partialChunks = await client2.read(50, 100).toList();
-    final partialBytes =
-        Uint8List.fromList(partialChunks.expand((c) => c).toList());
+    final partialBytes = Uint8List.fromList(
+      partialChunks.expand((c) => c).toList(),
+    );
     expect(partialBytes, payload.sublist(50));
     await client2.close();
   });
 
-  test('FtpClient uploads file and avoids overwriting rename collisions', () async {
-    final tempDir = Directory.systemTemp.createTempSync('ftp_test_');
-    try {
-      final uploadFile = File('${tempDir.path}/upload.bin');
-      final uploadData = Uint8List.fromList([10, 20, 30, 40]);
-      await uploadFile.writeAsBytes(uploadData);
+  test(
+    'FtpClient uploads file and avoids overwriting rename collisions',
+    () async {
+      final tempDir = Directory.systemTemp.createTempSync('ftp_test_');
+      try {
+        final uploadFile = File('${tempDir.path}/upload.bin');
+        final uploadData = Uint8List.fromList([10, 20, 30, 40]);
+        await uploadFile.writeAsBytes(uploadData);
 
-      final client = await FtpClient.connect(
-        Uri.parse('ftp://127.0.0.1:${server.port}/Music/'),
-      );
+        final client = await FtpClient.connect(
+          Uri.parse('ftp://127.0.0.1:${server.port}/Music/'),
+        );
 
-      await client.upload(
-        'new.tmp',
-        uploadFile,
-        checkpoint: () {},
-        progress: (_) {},
-      );
-      expect(server.files['/Music/new.tmp'], uploadData);
+        await client.upload(
+          'new.tmp',
+          uploadFile,
+          checkpoint: () {},
+          progress: (_) {},
+        );
+        expect(server.files['/Music/new.tmp'], uploadData);
 
-      // Rename to destination
-      await client.rename('new.tmp', 'new.flac');
-      expect(server.files['/Music/new.flac'], uploadData);
-      expect(server.files.containsKey('/Music/new.tmp'), isFalse);
+        // Rename to destination
+        await client.rename('new.tmp', 'new.flac');
+        expect(server.files['/Music/new.flac'], uploadData);
+        expect(server.files.containsKey('/Music/new.tmp'), isFalse);
 
-      // Second upload trying to rename to existing 'new.flac' should throw invalidParam
-      await client.upload(
-        'collision.tmp',
-        uploadFile,
-        checkpoint: () {},
-        progress: (_) {},
-      );
-      await expectLater(
-        () => client.rename('collision.tmp', 'new.flac'),
-        throwsA(
-          isA<SmbException>().having(
-            (e) => e.type,
-            'type',
-            SmbErrorType.invalidParam,
+        // Second upload trying to rename to existing 'new.flac' should throw invalidParam
+        await client.upload(
+          'collision.tmp',
+          uploadFile,
+          checkpoint: () {},
+          progress: (_) {},
+        );
+        await expectLater(
+          () => client.rename('collision.tmp', 'new.flac'),
+          throwsA(
+            isA<SmbException>().having(
+              (e) => e.type,
+              'type',
+              SmbErrorType.invalidParam,
+            ),
           ),
-        ),
-      );
+        );
 
-      await client.close();
-    } finally {
-      tempDir.deleteSync(recursive: true);
-    }
-  });
+        await client.close();
+      } finally {
+        tempDir.deleteSync(recursive: true);
+      }
+    },
+  );
 
   test('FtpClient delete succeeds or handles safe 550', () async {
     server.files['/Music/delete_me.mp3'] = Uint8List(10);

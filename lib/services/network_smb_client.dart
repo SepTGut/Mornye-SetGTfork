@@ -76,10 +76,7 @@ class NetworkSmbClient implements SmbClient {
         timeoutSeconds: timeout.inSeconds,
       ),
     );
-    return [
-      for (final s in raw)
-        SmbShare(name: s.name, isDisk: s.isDisk),
-    ];
+    return [for (final s in raw) SmbShare(name: s.name, isDisk: s.isDisk)];
   }
 
   @override

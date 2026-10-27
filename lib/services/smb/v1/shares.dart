@@ -87,7 +87,11 @@ class Smb1Shares {
 
     var entryCount = 0;
     if (paramCount >= 8 && paramOffset + 8 <= raw.length) {
-      final pBd = ByteData.sublistView(raw, paramOffset, paramOffset + paramCount);
+      final pBd = ByteData.sublistView(
+        raw,
+        paramOffset,
+        paramOffset + paramCount,
+      );
       entryCount = pBd.getUint16(4, Endian.little);
     }
 
@@ -100,7 +104,9 @@ class Smb1Shares {
         final d = ByteData.sublistView(raw, offset, offset + 20);
         final nameBytes = raw.sublist(offset, offset + 13);
         final nullIdx = nameBytes.indexOf(0);
-        final cleanBytes = (nullIdx >= 0) ? nameBytes.sublist(0, nullIdx) : nameBytes;
+        final cleanBytes = (nullIdx >= 0)
+            ? nameBytes.sublist(0, nullIdx)
+            : nameBytes;
         final name = ascii.decode(cleanBytes, allowInvalid: true).trim();
 
         final shareType = d.getUint16(14, Endian.little);

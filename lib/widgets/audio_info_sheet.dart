@@ -366,8 +366,7 @@ class _AudioFacts {
       _losslessFormats.contains(codec.toLowerCase());
   late final bool direct =
       (processing?.direct ?? false) && usb.reason == 'active';
-  late final bool windowsExclusive =
-      processing?.exclusiveOutputActive ?? false;
+  late final bool windowsExclusive = processing?.exclusiveOutputActive ?? false;
   late final bool windowsExclusiveRequested =
       Platform.isWindows && settings.windowsExclusiveOutput;
 
@@ -467,9 +466,7 @@ class _AudioFacts {
     final String normalization;
     if (!settings.playbackNormalization) {
       normalization = l10n.audioInfoOff;
-    } else if (direct ||
-        settings.usbBitPerfect ||
-        windowsExclusiveRequested) {
+    } else if (direct || settings.usbBitPerfect || windowsExclusiveRequested) {
       normalization = l10n.audioInfoBypassed;
     } else if (gain > 0 && gain != 1) {
       normalization = l10n.audioInfoApplied(

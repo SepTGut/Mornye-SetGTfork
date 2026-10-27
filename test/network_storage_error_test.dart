@@ -42,14 +42,10 @@ void main() {
         'Authentication failed: STATUS_NOT_SUPPORTED',
         SmbErrorType.auth,
       ): NetworkStorageError.authentication,
-      const SmbException(
-        'Access denied',
-        SmbErrorType.accessDenied,
-      ): NetworkStorageError.permission,
-      const SmbException(
-        'Share not found',
-        SmbErrorType.fileNotFound,
-      ): NetworkStorageError.missingShare,
+      const SmbException('Access denied', SmbErrorType.accessDenied):
+          NetworkStorageError.permission,
+      const SmbException('Share not found', SmbErrorType.fileNotFound):
+          NetworkStorageError.missingShare,
     };
     for (final entry in cases.entries) {
       expect(classifyNetworkStorageError(entry.key), entry.value);

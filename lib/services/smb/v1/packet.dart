@@ -19,9 +19,9 @@ class Smb1Packet {
     List<int>? words,
     Uint8List? bytes,
     this.raw,
-  })  : securityFeatures = securityFeatures ?? Uint8List(8),
-        words = words != null ? Uint16List.fromList(words) : Uint16List(0),
-        bytes = bytes ?? Uint8List(0);
+  }) : securityFeatures = securityFeatures ?? Uint8List(8),
+       words = words != null ? Uint16List.fromList(words) : Uint16List(0),
+       bytes = bytes ?? Uint8List(0);
 
   final Uint8List? raw;
 
@@ -102,10 +102,7 @@ class Smb1Packet {
 
   factory Smb1Packet.decode(Uint8List raw) {
     if (raw.length < 32) {
-      throw const SmbException(
-        'Packet too short',
-        SmbErrorType.incompatible,
-      );
+      throw const SmbException('Packet too short', SmbErrorType.incompatible);
     }
     if (raw[0] != 0xFF || raw[1] != 0x53 || raw[2] != 0x4D || raw[3] != 0x42) {
       throw const SmbException(

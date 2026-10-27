@@ -23,10 +23,10 @@ class Smb1Client implements SmbClient {
     required int tid,
     Smb1Signer? signer,
     required Duration timeout,
-  })  : _uid = uid,
-        _tid = tid,
-        _signer = signer,
-        _timeout = timeout;
+  }) : _uid = uid,
+       _tid = tid,
+       _signer = signer,
+       _timeout = timeout;
 
   final Smb1Transport _transport;
   @override
@@ -232,10 +232,7 @@ class Smb1Client implements SmbClient {
   Future<Smb1Packet> _roundTrip(Smb1Packet request) =>
       _lock.synchronized(() async {
         if (_closed) {
-          throw const SmbException(
-            'Client is closed',
-            SmbErrorType.connection,
-          );
+          throw const SmbException('Client is closed', SmbErrorType.connection);
         }
         _mid = (_mid + 1) & 0xFFFF;
         request.mid = _mid;
@@ -580,7 +577,8 @@ class Smb1Client implements SmbClient {
         uid: _uid,
       );
       final resp = await _roundTrip(req);
-      if (resp.status != NtStatus.success && resp.status != NtStatus.endOfFile) {
+      if (resp.status != NtStatus.success &&
+          resp.status != NtStatus.endOfFile) {
         throw SmbException(
           'Read failed at offset $offset: ${NtStatus.describe(resp.status)}',
           NtStatus.toSmbErrorType(resp.status),

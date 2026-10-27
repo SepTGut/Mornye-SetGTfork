@@ -932,19 +932,28 @@ class _NetworkConnectionFormState extends State<_NetworkConnectionForm> {
                               final confirm = await showDialog<bool>(
                                 context: context,
                                 builder: (ctx) => AlertDialog.adaptive(
-                                  title: Text(context.l10n.networkSmb1WarningTitle),
-                                  content: Text(context.l10n.networkSmb1Warning),
+                                  title: Text(
+                                    context.l10n.networkSmb1WarningTitle,
+                                  ),
+                                  content: Text(
+                                    context.l10n.networkSmb1Warning,
+                                  ),
                                   actions: [
                                     TextButton(
-                                      onPressed: () => Navigator.pop(ctx, false),
+                                      onPressed: () =>
+                                          Navigator.pop(ctx, false),
                                       child: Text(
-                                        MaterialLocalizations.of(ctx).cancelButtonLabel,
+                                        MaterialLocalizations.of(
+                                          ctx,
+                                        ).cancelButtonLabel,
                                       ),
                                     ),
                                     TextButton(
                                       onPressed: () => Navigator.pop(ctx, true),
                                       child: Text(
-                                        MaterialLocalizations.of(ctx).okButtonLabel,
+                                        MaterialLocalizations.of(
+                                          ctx,
+                                        ).okButtonLabel,
                                       ),
                                     ),
                                   ],

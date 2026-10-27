@@ -14,11 +14,11 @@ class FtpListingItem {
   final int modifiedTime;
 
   SmbEntry toSmbEntry() => SmbEntry(
-        name: name,
-        isDirectory: isDirectory,
-        size: size,
-        modifiedTime: modifiedTime,
-      );
+    name: name,
+    isDirectory: isDirectory,
+    size: size,
+    modifiedTime: modifiedTime,
+  );
 }
 
 class FtpListingParser {
@@ -77,7 +77,10 @@ class FtpListingParser {
 
       // Check if facts indicated cdir or pdir
       final typeVal = facts
-          .firstWhere((f) => f.toLowerCase().startsWith('type='), orElse: () => '')
+          .firstWhere(
+            (f) => f.toLowerCase().startsWith('type='),
+            orElse: () => '',
+          )
           .toLowerCase();
       if (typeVal == 'type=cdir' || typeVal == 'type=pdir') {
         continue;
@@ -192,7 +195,13 @@ class FtpListingParser {
       if (isPm && hour < 12) hour += 12;
       if (isAm && hour == 12) hour = 0;
 
-      return DateTime.utc(year, month, day, hour, minute).millisecondsSinceEpoch;
+      return DateTime.utc(
+        year,
+        month,
+        day,
+        hour,
+        minute,
+      ).millisecondsSinceEpoch;
     } catch (_) {
       return 0;
     }
@@ -216,12 +225,7 @@ class FtpListingParser {
     // Month: parts[5] (Jan, Feb, ...)
     // Day: parts[6]
     // Year or Time: parts[7] (2025 or 13:00)
-    final modifiedTime = _parseUnixDateTime(
-      parts[5],
-      parts[6],
-      parts[7],
-      now,
-    );
+    final modifiedTime = _parseUnixDateTime(parts[5], parts[6], parts[7], now);
 
     // Name is remaining parts joined
     var rawName = parts.sublist(8).join(' ');
@@ -278,7 +282,13 @@ class FtpListingParser {
         year = int.parse(yearOrTime);
       }
 
-      return DateTime.utc(year, month, day, hour, minute).millisecondsSinceEpoch;
+      return DateTime.utc(
+        year,
+        month,
+        day,
+        hour,
+        minute,
+      ).millisecondsSinceEpoch;
     } catch (_) {
       return 0;
     }

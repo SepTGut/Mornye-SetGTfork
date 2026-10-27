@@ -26,7 +26,11 @@ class Md4 {
     // 64-bit length in bits (little endian)
     final bd = ByteData.sublistView(buffer);
     bd.setUint32(totalLength - 8, bitLength & _mask32, Endian.little);
-    bd.setUint32(totalLength - 4, (bitLength ~/ 0x100000000) & _mask32, Endian.little);
+    bd.setUint32(
+      totalLength - 4,
+      (bitLength ~/ 0x100000000) & _mask32,
+      Endian.little,
+    );
 
     for (var i = 0; i < totalLength; i += 64) {
       final x = List<int>.generate(

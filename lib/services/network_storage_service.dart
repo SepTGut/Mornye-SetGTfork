@@ -149,9 +149,9 @@ class NetworkConnection {
             ? root.scheme != 'smb' ||
                   (root.hasPort && (root.port < 1 || root.port > 65535))
             : protocol == NetworkProtocol.ftp
-                ? root.scheme != 'ftp' ||
-                      (root.hasPort && (root.port < 1 || root.port > 65535))
-                : !['http', 'https'].contains(root.scheme))) {
+            ? root.scheme != 'ftp' ||
+                  (root.hasPort && (root.port < 1 || root.port > 65535))
+            : !['http', 'https'].contains(root.scheme))) {
       throw const FormatException('Invalid network address');
     }
   }
@@ -372,8 +372,8 @@ class NetworkStorageService {
         connection.protocol == NetworkProtocol.smb && !target.hasPort
             ? 445
             : connection.protocol == NetworkProtocol.ftp && !target.hasPort
-                ? 21
-                : target.port,
+            ? 21
+            : target.port,
         connection.username,
         connection.protocol == NetworkProtocol.subsonic
             ? connection.id
@@ -435,20 +435,20 @@ class NetworkStorageService {
             timeout: timeout,
           )
         : c.smb1
-            ? Smb1Client.connect(
-                target,
-                username: c.username,
-                password: c.password,
-                domain: c.domain,
-                timeout: timeout,
-              )
-            : NetworkSmbClient.connect(
-                target,
-                username: c.username,
-                password: c.password,
-                domain: c.domain,
-                timeout: timeout,
-              );
+        ? Smb1Client.connect(
+            target,
+            username: c.username,
+            password: c.password,
+            domain: c.domain,
+            timeout: timeout,
+          )
+        : NetworkSmbClient.connect(
+            target,
+            username: c.username,
+            password: c.password,
+            domain: c.domain,
+            timeout: timeout,
+          );
     unawaited(
       pending
           .then((client) async {
@@ -658,21 +658,23 @@ class NetworkStorageService {
       if (c.protocol == NetworkProtocol.smb &&
           target.pathSegments.every((s) => s.isEmpty)) {
         await _ensureAccess(target);
-        final shares = await (c.smb1
-            ? Smb1Client.shares(
-                target,
-                username: c.username,
-                password: c.password,
-                domain: c.domain,
-                timeout: timeout,
-              )
-            : NetworkSmbClient.shares(
-                target,
-                username: c.username,
-                password: c.password,
-                domain: c.domain,
-                timeout: timeout,
-              )).timeout(timeout);
+        final shares =
+            await (c.smb1
+                    ? Smb1Client.shares(
+                        target,
+                        username: c.username,
+                        password: c.password,
+                        domain: c.domain,
+                        timeout: timeout,
+                      )
+                    : NetworkSmbClient.shares(
+                        target,
+                        username: c.username,
+                        password: c.password,
+                        domain: c.domain,
+                        timeout: timeout,
+                      ))
+                .timeout(timeout);
         return _sorted([
           for (final share in shares)
             if (share.isDisk)

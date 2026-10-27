@@ -411,11 +411,16 @@ class LibraryDatabase {
 
   String _orderByForSort(LocalLibrarySortMode sortMode) {
     return switch (sortMode) {
-      LocalLibrarySortMode.title => 'track_name_norm, artist_name_norm, album_name_norm, disc_number, track_number',
-      LocalLibrarySortMode.artist => 'artist_name_norm, album_name_norm, disc_number, track_number, track_name_norm',
-      LocalLibrarySortMode.latest => 'scanned_at DESC, album_artist_norm, album_name_norm, disc_number, track_number',
-      LocalLibrarySortMode.quality => 'COALESCE(bit_depth, 0) DESC, COALESCE(sample_rate, 0) DESC, COALESCE(bitrate, 0) DESC, album_artist_norm, album_name_norm, disc_number, track_number',
-      LocalLibrarySortMode.album => 'album_artist_norm, album_name_norm, COALESCE(disc_number, 0), COALESCE(track_number, 0), track_name_norm',
+      LocalLibrarySortMode.title =>
+        'track_name_norm, artist_name_norm, album_name_norm, disc_number, track_number',
+      LocalLibrarySortMode.artist =>
+        'artist_name_norm, album_name_norm, disc_number, track_number, track_name_norm',
+      LocalLibrarySortMode.latest =>
+        'scanned_at DESC, album_artist_norm, album_name_norm, disc_number, track_number',
+      LocalLibrarySortMode.quality =>
+        'COALESCE(bit_depth, 0) DESC, COALESCE(sample_rate, 0) DESC, COALESCE(bitrate, 0) DESC, album_artist_norm, album_name_norm, disc_number, track_number',
+      LocalLibrarySortMode.album =>
+        'album_artist_norm, album_name_norm, COALESCE(disc_number, 0), COALESCE(track_number, 0), track_name_norm',
     };
   }
 
@@ -479,7 +484,8 @@ class LibraryDatabase {
     final db = await database;
     final rows = await db.query(
       visibleLibraryView,
-      where: "LOWER(album_name) = ? AND LOWER(COALESCE(NULLIF(album_artist, ''), artist_name)) = ?",
+      where:
+          "LOWER(album_name) = ? AND LOWER(COALESCE(NULLIF(album_artist, ''), artist_name)) = ?",
       whereArgs: [albumName.toLowerCase(), artistName.toLowerCase()],
       orderBy:
           'COALESCE(disc_number, 0), COALESCE(track_number, 0), track_name',

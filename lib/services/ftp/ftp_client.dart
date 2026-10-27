@@ -22,11 +22,8 @@ class FtpResponse {
 }
 
 class FtpClient implements SmbClient {
-  FtpClient._(
-    this._socket,
-    this.path, {
-    required Duration timeout,
-  }) : _timeout = timeout {
+  FtpClient._(this._socket, this.path, {required Duration timeout})
+    : _timeout = timeout {
     _socketSub = _socket.listen(
       _onData,
       onError: (Object err) {
@@ -374,7 +371,9 @@ class FtpClient implements SmbClient {
 
     // 3. Try directory check via CWD
     final pwdResp = await _sendCommand('PWD');
-    final originalDir = pwdResp.code == 257 ? _extractQuoted(pwdResp.message) : '/';
+    final originalDir = pwdResp.code == 257
+        ? _extractQuoted(pwdResp.message)
+        : '/';
     final cwdResp = await _sendCommand('CWD $targetPath');
     if (cwdResp.code == 250) {
       if (originalDir.isNotEmpty) {
@@ -437,7 +436,9 @@ class FtpClient implements SmbClient {
 
       // 3. Try CWD (directories)
       final pwdResp = await _sendCommand('PWD');
-      final originalDir = pwdResp.code == 257 ? _extractQuoted(pwdResp.message) : '';
+      final originalDir = pwdResp.code == 257
+          ? _extractQuoted(pwdResp.message)
+          : '';
       final cwdResp = await _sendCommand('CWD $full');
       if (cwdResp.code == 250) {
         if (originalDir.isNotEmpty) {
@@ -663,11 +664,11 @@ class FtpClient implements SmbClient {
   }
 
   static SmbErrorType _mapFtpError(int code) => switch (code) {
-        530 || 332 => SmbErrorType.auth,
-        550 => SmbErrorType.fileNotFound,
-        552 || 553 => SmbErrorType.accessDenied,
-        421 || 425 || 426 => SmbErrorType.connection,
-        500 || 501 || 502 || 504 => SmbErrorType.incompatible,
-        _ => SmbErrorType.unknown,
-      };
+    530 || 332 => SmbErrorType.auth,
+    550 => SmbErrorType.fileNotFound,
+    552 || 553 => SmbErrorType.accessDenied,
+    421 || 425 || 426 => SmbErrorType.connection,
+    500 || 501 || 502 || 504 => SmbErrorType.incompatible,
+    _ => SmbErrorType.unknown,
+  };
 }

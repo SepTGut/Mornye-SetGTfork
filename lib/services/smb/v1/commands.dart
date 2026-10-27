@@ -70,7 +70,8 @@ class Smb1Commands {
     final dialect = Uint8List.fromList([0x02, ...'NT LM 0.12'.codeUnits, 0x00]);
     return Smb1Packet(
       command: Smb1Packet.cmdNegotiate,
-      flags2: Smb1Packet.flag2Unicode |
+      flags2:
+          Smb1Packet.flag2Unicode |
           Smb1Packet.flag2NtStatus |
           Smb1Packet.flag2ExtendedSecurity,
       bytes: dialect,
@@ -153,7 +154,8 @@ class Smb1Commands {
     int uid = 0,
     int maxBufferSize = 65535,
   }) {
-    const caps = capUnicode |
+    const caps =
+        capUnicode |
         capLargeFiles |
         capNtSmbs |
         capStatus32 |
@@ -178,7 +180,8 @@ class Smb1Commands {
     final lanmanBytes = _encodeUnicodeString('Mornye');
     // Header (32) + WordCount (1) + 12 words (24) + ByteCount (2) = 59
     final pad = ((59 + securityBlob.length) % 2 != 0) ? 1 : 0;
-    final totalBytes = securityBlob.length + pad + osBytes.length + lanmanBytes.length;
+    final totalBytes =
+        securityBlob.length + pad + osBytes.length + lanmanBytes.length;
     final bytes = Uint8List(totalBytes);
     bytes.setRange(0, securityBlob.length, securityBlob);
     if (pad == 1) {
@@ -186,15 +189,12 @@ class Smb1Commands {
     }
     final osOffset = securityBlob.length + pad;
     bytes.setRange(osOffset, osOffset + osBytes.length, osBytes);
-    bytes.setRange(
-      osOffset + osBytes.length,
-      totalBytes,
-      lanmanBytes,
-    );
+    bytes.setRange(osOffset + osBytes.length, totalBytes, lanmanBytes);
 
     return Smb1Packet(
       command: Smb1Packet.cmdSessionSetupAndX,
-      flags2: Smb1Packet.flag2Unicode |
+      flags2:
+          Smb1Packet.flag2Unicode |
           Smb1Packet.flag2NtStatus |
           Smb1Packet.flag2ExtendedSecurity,
       uid: uid,
@@ -214,10 +214,7 @@ class Smb1Commands {
     int maxBufferSize = 65535,
     bool unicode = true,
   }) {
-    const caps = capUnicode |
-        capLargeFiles |
-        capNtSmbs |
-        capStatus32;
+    const caps = capUnicode | capLargeFiles | capNtSmbs | capStatus32;
 
     Uint8List ciPassword;
     Uint8List csPassword;
@@ -329,19 +326,19 @@ class Smb1Commands {
   static Smb1Packet createTreeDisconnectRequest({required int tid}) =>
       Smb1Packet(command: Smb1Packet.cmdTreeDisconnect, tid: tid);
 
-  static Smb1Packet createLogoffRequest({required int uid}) =>
-      Smb1Packet(
-        command: Smb1Packet.cmdLogoffAndX,
-        uid: uid,
-        words: [0x00FF, 0x0000],
-      );
+  static Smb1Packet createLogoffRequest({required int uid}) => Smb1Packet(
+    command: Smb1Packet.cmdLogoffAndX,
+    uid: uid,
+    words: [0x00FF, 0x0000],
+  );
 
   static Smb1Packet createNtCreateRequest({
     required String path,
     required int tid,
     required int uid,
     required bool write,
-    int disposition = 1, // 1 = FILE_OPEN, 2 = FILE_CREATE, 5 = FILE_OVERWRITE_IF
+    int disposition =
+        1, // 1 = FILE_OPEN, 2 = FILE_CREATE, 5 = FILE_OVERWRITE_IF
     bool directory = false,
   }) {
     final cleanPath = path.replaceAll('/', '\\');
@@ -360,13 +357,21 @@ class Smb1Commands {
     wBd.setUint8(1, 0); // AndXReserved
     wBd.setUint16(2, 0, Endian.little); // AndXOffset
     wBd.setUint8(4, 0); // Reserved
-    wBd.setUint16(5, nameByteLength, Endian.little); // NameLength in bytes (excluding null terminator per MS-CIFS 2.2.4.64.1)
+    wBd.setUint16(
+      5,
+      nameByteLength,
+      Endian.little,
+    ); // NameLength in bytes (excluding null terminator per MS-CIFS 2.2.4.64.1)
     wBd.setUint32(7, 0x00000016, Endian.little); // Flags
     wBd.setUint32(11, 0, Endian.little); // RootDirectoryFID
     wBd.setUint32(15, desiredAccess, Endian.little); // DesiredAccess
     wBd.setUint64(19, 0, Endian.little); // AllocationSize
     wBd.setUint32(27, extFileAttrs, Endian.little); // ExtFileAttributes
-    wBd.setUint32(31, 0x00000007, Endian.little); // ShareAccess: Read/Write/Delete
+    wBd.setUint32(
+      31,
+      0x00000007,
+      Endian.little,
+    ); // ShareAccess: Read/Write/Delete
     wBd.setUint32(35, disposition, Endian.little); // CreateDisposition
     wBd.setUint32(39, createOptions, Endian.little); // CreateOptions
     wBd.setUint32(43, 0x00000002, Endian.little); // ImpersonationLevel
@@ -403,7 +408,7 @@ class Smb1Commands {
     final words = [
       0x00FF, // 0: AndXCommand
       0x0000, // 1: AndXOffset
-      fid,    // 2: FID
+      fid, // 2: FID
       offset & 0xFFFF, // 3: OffsetLow
       (offset >> 16) & 0xFFFF, // 4: OffsetHigh (32-bit)
       length & 0xFFFF, // 5: MaxCountOfBytesToReturn
@@ -436,7 +441,7 @@ class Smb1Commands {
     final words = [
       0x00FF, // 0: AndXCommand
       0x0000, // 1: AndXOffset
-      fid,    // 2: FID
+      fid, // 2: FID
       offset & 0xFFFF, // 3: OffsetLow
       (offset >> 16) & 0xFFFF, // 4: OffsetHigh (32-bit)
       0, // 5: Timeout low
@@ -571,10 +576,18 @@ class Smb1Commands {
     // Setup parameters for TRANS2_FIND_FIRST2
     final paramBytes = Uint8List(12 + unicodePattern.length);
     final pBd = ByteData.sublistView(paramBytes);
-    pBd.setUint16(0, 0x0016, Endian.little); // SearchAttributes: Hidden | System | Directory
+    pBd.setUint16(
+      0,
+      0x0016,
+      Endian.little,
+    ); // SearchAttributes: Hidden | System | Directory
     pBd.setUint16(2, 256, Endian.little); // SearchCount
     pBd.setUint16(4, 0x0006, Endian.little); // Flags: CloseIfEOS | ResumeKeys
-    pBd.setUint16(6, 0x0104, Endian.little); // InfoLevel: SMB_FIND_FILE_BOTH_DIRECTORY_INFO
+    pBd.setUint16(
+      6,
+      0x0104,
+      Endian.little,
+    ); // InfoLevel: SMB_FIND_FILE_BOTH_DIRECTORY_INFO
     pBd.setUint32(8, 0, Endian.little); // StorageType
     paramBytes.setRange(12, paramBytes.length, unicodePattern);
 
@@ -599,7 +612,11 @@ class Smb1Commands {
     final pBd = ByteData.sublistView(paramBytes);
     pBd.setUint16(0, sid, Endian.little);
     pBd.setUint16(2, 256, Endian.little); // SearchCount
-    pBd.setUint16(4, 0x0104, Endian.little); // InfoLevel: SMB_FIND_FILE_BOTH_DIRECTORY_INFO
+    pBd.setUint16(
+      4,
+      0x0104,
+      Endian.little,
+    ); // InfoLevel: SMB_FIND_FILE_BOTH_DIRECTORY_INFO
     pBd.setUint32(6, resumeKey, Endian.little);
     pBd.setUint16(10, 0x0006, Endian.little); // Flags: CloseIfEOS
     paramBytes.setRange(12, paramBytes.length, unicodeLastName);
@@ -666,7 +683,7 @@ class Smb1Commands {
   }
 
   static ({List<Smb1FileEntry> entries, int sid, bool endOfSearch})
-      parseFindBothDirectoryInfo(Smb1Packet packet) {
+  parseFindBothDirectoryInfo(Smb1Packet packet) {
     if (packet.status != NtStatus.success &&
         packet.status != NtStatus.noMoreFiles) {
       throw SmbException(
@@ -692,7 +709,11 @@ class Smb1Commands {
 
     final raw = packet.raw ?? packet.encode();
     if (paramCount >= 6 && paramOffset + 6 <= raw.length) {
-      final pBd = ByteData.sublistView(raw, paramOffset, paramOffset + paramCount);
+      final pBd = ByteData.sublistView(
+        raw,
+        paramOffset,
+        paramOffset + paramCount,
+      );
       sid = pBd.getUint16(0, Endian.little);
       endOfSearch = pBd.getUint16(4, Endian.little) != 0;
     }

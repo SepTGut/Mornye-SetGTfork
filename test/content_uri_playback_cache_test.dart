@@ -63,7 +63,9 @@ void main() {
     final older = Completer<String?>();
     final newer = Completer<String?>();
     var copies = 0;
-    final sources = cache((_, __) => copies++ == 0 ? older.future : newer.future);
+    final sources = cache(
+      (_, __) => copies++ == 0 ? older.future : newer.future,
+    );
     final oldResult = sources.resolve('content://music/one');
     expect(await sources.invalidate('content://music/one'), isTrue);
     final newResult = sources.resolve('content://music/one');
@@ -116,7 +118,10 @@ void main() {
   test(
     'byte budget permits one oversized track and evicts older copies',
     () async {
-      final sources = cache((source, __) => file(source, bytes: 4), maxBytes: 3);
+      final sources = cache(
+        (source, __) => file(source, bytes: 4),
+        maxBytes: 3,
+      );
       final first = (await sources.resolve('one'))!;
       expect(await File(first).exists(), isTrue);
       final second = (await sources.resolve('two'))!;

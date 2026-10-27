@@ -350,7 +350,12 @@ extension NetworkStorageUpload on NetworkStorageService {
           networkTarget(location.connection, path),
         );
         try {
-          await client.upload(client.path, file, checkpoint: () {}, progress: (_) {});
+          await client.upload(
+            client.path,
+            file,
+            checkpoint: () {},
+            progress: (_) {},
+          );
           await client.delete(client.path);
         } finally {
           await client.close();

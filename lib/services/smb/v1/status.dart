@@ -54,8 +54,7 @@ class NtStatus {
     connectionDisconnected ||
     connectionReset => SmbErrorType.connection,
 
-    invalidParameter ||
-    invalidHandle => SmbErrorType.invalidParam,
+    invalidParameter || invalidHandle => SmbErrorType.invalidParam,
 
     _ => SmbErrorType.unknown,
   };

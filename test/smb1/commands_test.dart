@@ -10,87 +10,120 @@ import 'package:mornye/services/smb/v1/status.dart';
 
 void main() {
   group('SMB1 Commands & Shares packet structures', () {
-    test('createTreeConnectRequest formats correctly for IPC and disk shares', () {
-      final ipcReq = Smb1Commands.createTreeConnectRequest(path: r'\\192.168.1.1\IPC$');
-      expect(ipcReq.command, Smb1Packet.cmdTreeConnectAndX);
-      expect(ipcReq.words[2], 0x0000); // Flags: 0 (not 0x0008)
-      expect(ipcReq.flags2 & Smb1Packet.flag2ExtendedSecurity, 0); // No extended security leak
-      final ipcBytes = ipcReq.bytes;
-      expect(ipcBytes[0], 0x00); // Null password
-      final ipcStr = ascii.decode(ipcBytes.sublist(ipcBytes.length - 4));
-      expect(ipcStr, 'IPC\x00');
+    test(
+      'createTreeConnectRequest formats correctly for IPC and disk shares',
+      () {
+        final ipcReq = Smb1Commands.createTreeConnectRequest(
+          path: r'\\192.168.1.1\IPC$',
+        );
+        expect(ipcReq.command, Smb1Packet.cmdTreeConnectAndX);
+        expect(ipcReq.words[2], 0x0000); // Flags: 0 (not 0x0008)
+        expect(
+          ipcReq.flags2 & Smb1Packet.flag2ExtendedSecurity,
+          0,
+        ); // No extended security leak
+        final ipcBytes = ipcReq.bytes;
+        expect(ipcBytes[0], 0x00); // Null password
+        final ipcStr = ascii.decode(ipcBytes.sublist(ipcBytes.length - 4));
+        expect(ipcStr, 'IPC\x00');
 
-      final diskReq = Smb1Commands.createTreeConnectRequest(path: r'\\192.168.1.1\Music');
-      expect(diskReq.words[2], 0x0000);
-      final diskBytes = diskReq.bytes;
-      final diskStr = ascii.decode(diskBytes.sublist(diskBytes.length - 6));
-      expect(diskStr, '?????\x00');
-    });
+        final diskReq = Smb1Commands.createTreeConnectRequest(
+          path: r'\\192.168.1.1\Music',
+        );
+        expect(diskReq.words[2], 0x0000);
+        final diskBytes = diskReq.bytes;
+        final diskStr = ascii.decode(diskBytes.sublist(diskBytes.length - 6));
+        expect(diskStr, '?????\x00');
+      },
+    );
 
-    test('createNtCreateRequest aligns parameter block, excludes null from NameLength, and adds Unicode padding', () {
-      final req = Smb1Commands.createNtCreateRequest(
-        path: 'Music',
-        tid: 1,
-        uid: 2,
-        write: false,
-      );
+    test(
+      'createNtCreateRequest aligns parameter block, excludes null from NameLength, and adds Unicode padding',
+      () {
+        final req = Smb1Commands.createNtCreateRequest(
+          path: 'Music',
+          tid: 1,
+          uid: 2,
+          write: false,
+        );
 
-      expect(req.command, Smb1Packet.cmdNtCreateAndX);
-      expect(req.words.length, 24); // 24 words = 48 bytes
-      expect(req.bytes.first, 0x00); // 1-byte padding to align Unicode Name to offset 84
+        expect(req.command, Smb1Packet.cmdNtCreateAndX);
+        expect(req.words.length, 24); // 24 words = 48 bytes
+        expect(
+          req.bytes.first,
+          0x00,
+        ); // 1-byte padding to align Unicode Name to offset 84
 
-      final encoded = req.encode();
-      // SMB header: 32 bytes
-      // WordCount: offset 32 (value 24)
-      expect(encoded[32], 24);
-      // ByteCount: offset 33 + 48 = 81
-      final bd = ByteData.sublistView(encoded);
-      final byteCount = bd.getUint16(81, Endian.little);
-      expect(byteCount, req.bytes.length);
-      // Unicode Name starts at offset 84 (83 is pad byte)
-      expect(encoded[83], 0x00);
-      // Offset 84 should be Unicode '\' (0x005C)
-      expect(bd.getUint16(84, Endian.little), r'\'.codeUnitAt(0));
+        final encoded = req.encode();
+        // SMB header: 32 bytes
+        // WordCount: offset 32 (value 24)
+        expect(encoded[32], 24);
+        // ByteCount: offset 33 + 48 = 81
+        final bd = ByteData.sublistView(encoded);
+        final byteCount = bd.getUint16(81, Endian.little);
+        expect(byteCount, req.bytes.length);
+        // Unicode Name starts at offset 84 (83 is pad byte)
+        expect(encoded[83], 0x00);
+        // Offset 84 should be Unicode '\' (0x005C)
+        expect(bd.getUint16(84, Endian.little), r'\'.codeUnitAt(0));
 
-      // MS-CIFS 2.2.4.64.1: NameLength in word block at offset 5 is byte length of string WITHOUT null terminator
-      // '\Music' is 6 characters = 12 UTF-16LE bytes
-      final wordBlockBd = ByteData.sublistView(encoded, 33, 81);
-      expect(wordBlockBd.getUint16(5, Endian.little), 12);
-    });
+        // MS-CIFS 2.2.4.64.1: NameLength in word block at offset 5 is byte length of string WITHOUT null terminator
+        // '\Music' is 6 characters = 12 UTF-16LE bytes
+        final wordBlockBd = ByteData.sublistView(encoded, 33, 81);
+        expect(wordBlockBd.getUint16(5, Endian.little), 12);
+      },
+    );
 
-    test('parseNtCreateResponse extracts fid, size, lastWriteTime, and directory flags', () {
-      final raw = Uint8List(104);
-      final bd = ByteData.sublistView(raw);
-      // Header: 32 bytes
-      raw[32] = 34; // WordCount = 34
-      // Word block starts at 33
-      bd.setUint16(38, 0x4321, Endian.little); // FID at byte 38
-      bd.setUint64(60, 133000000000000000, Endian.little); // LastWriteTime at byte 60
-      bd.setUint32(76, 0x00000020, Endian.little); // ExtFileAttributes (Archive) at byte 76
-      bd.setUint64(88, 543210, Endian.little); // EndOfFile at byte 88
-      raw[100] = 0; // Directory byte
+    test(
+      'parseNtCreateResponse extracts fid, size, lastWriteTime, and directory flags',
+      () {
+        final raw = Uint8List(104);
+        final bd = ByteData.sublistView(raw);
+        // Header: 32 bytes
+        raw[32] = 34; // WordCount = 34
+        // Word block starts at 33
+        bd.setUint16(38, 0x4321, Endian.little); // FID at byte 38
+        bd.setUint64(
+          60,
+          133000000000000000,
+          Endian.little,
+        ); // LastWriteTime at byte 60
+        bd.setUint32(
+          76,
+          0x00000020,
+          Endian.little,
+        ); // ExtFileAttributes (Archive) at byte 76
+        bd.setUint64(88, 543210, Endian.little); // EndOfFile at byte 88
+        raw[100] = 0; // Directory byte
 
-      final packet = Smb1Packet(
-        command: Smb1Packet.cmdNtCreateAndX,
-        raw: raw,
-      );
+        final packet = Smb1Packet(
+          command: Smb1Packet.cmdNtCreateAndX,
+          raw: raw,
+        );
 
-      final result = Smb1Commands.parseNtCreateResponse(packet);
-      expect(result.fid, 0x4321);
-      expect(result.isDirectory, isFalse);
-      expect(result.size, 543210);
-      expect(result.lastWriteTime, (133000000000000000 - 116444736000000000) ~/ 10000);
+        final result = Smb1Commands.parseNtCreateResponse(packet);
+        expect(result.fid, 0x4321);
+        expect(result.isDirectory, isFalse);
+        expect(result.size, 543210);
+        expect(
+          result.lastWriteTime,
+          (133000000000000000 - 116444736000000000) ~/ 10000,
+        );
 
-      // Verify directory detection via flag
-      raw[100] = 1;
-      final dirResult = Smb1Commands.parseNtCreateResponse(packet);
-      expect(dirResult.isDirectory, isTrue);
-    });
+        // Verify directory detection via flag
+        raw[100] = 1;
+        final dirResult = Smb1Commands.parseNtCreateResponse(packet);
+        expect(dirResult.isDirectory, isTrue);
+      },
+    );
 
     test('RAP NetShareEnum request and response parsing', () {
       final req = Smb1Shares.createNetShareEnumRequest(tid: 1, uid: 2);
       expect(req.command, Smb1Packet.cmdTransaction);
-      expect(req.flags2 & Smb1Packet.flag2Unicode, 0); // No Unicode for ASCII \PIPE\LANMAN
+      expect(
+        req.flags2 & Smb1Packet.flag2Unicode,
+        0,
+      ); // No Unicode for ASCII \PIPE\LANMAN
       expect(req.words.length, 14); // 14 words
       expect(req.words[10], 76); // ParameterOffset = 76
 

@@ -351,8 +351,9 @@ class MediaKitPlaybackDeck implements PlaybackDeck {
     _exclusiveFallbackReason = null;
     _outputParams = null;
     if (playerId == 'music-player') {
-      windowsExclusiveOutputStatus.value =
-          _exclusiveRequested ? 'starting' : null;
+      windowsExclusiveOutputStatus.value = _exclusiveRequested
+          ? 'starting'
+          : null;
     }
     var result = -1;
     try {
@@ -439,7 +440,9 @@ class MediaKitPlaybackDeck implements PlaybackDeck {
       if (playerId == 'music-player') {
         windowsExclusiveOutputStatus.value = 'fallback';
       }
-    } else if (error == null && _exclusiveRequested && _exclusiveAttemptAllowed) {
+    } else if (error == null &&
+        _exclusiveRequested &&
+        _exclusiveAttemptAllowed) {
       _exclusiveActive = true;
       if (playerId == 'music-player') {
         windowsExclusiveOutputStatus.value = 'active';

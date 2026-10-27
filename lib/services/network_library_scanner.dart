@@ -153,8 +153,7 @@ class NetworkLibraryScanner {
     final visited = <String>{};
     // Leave room for playback and avoid saturating a small NAS/router.
     final concurrency =
-        _metadataConcurrency ??
-        (connection.usesFileClient ? 2 : 3);
+        _metadataConcurrency ?? (connection.usesFileClient ? 2 : 3);
     final metadata = _readMetadata == null
         ? NetworkMetadataService(
             storage: _storage,

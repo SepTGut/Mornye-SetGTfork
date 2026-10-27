@@ -43,9 +43,14 @@ extension NetworkStorageDelete on NetworkStorageService {
     if (location == null) return false;
     final (:connection, :path) = location;
     if (connection.usesFileClient) {
-      final client = await _fileClient(connection, networkTarget(connection, path));
+      final client = await _fileClient(
+        connection,
+        networkTarget(connection, path),
+      );
       try {
-        if (!(await client.stat().timeout(NetworkStorageService.timeout)).isFile) {
+        if (!(await client.stat().timeout(
+          NetworkStorageService.timeout,
+        )).isFile) {
           return false;
         }
         await client.delete(client.path).timeout(NetworkStorageService.timeout);

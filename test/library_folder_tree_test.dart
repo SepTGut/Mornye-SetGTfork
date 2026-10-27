@@ -54,33 +54,36 @@ void main() {
       expect(tree.getBreadcrumbs(''), isEmpty);
     });
 
-    test('builds single folder with direct tracks and sorts tracks by track number', () {
-      final tracks = [
-        _makeItem(
-          id: '2',
-          trackName: 'Track Two',
-          filePath: '/storage/emulated/0/Music/track2.flac',
-          trackNumber: 2,
-        ),
-        _makeItem(
-          id: '1',
-          trackName: 'Track One',
-          filePath: '/storage/emulated/0/Music/track1.flac',
-          trackNumber: 1,
-        ),
-      ];
+    test(
+      'builds single folder with direct tracks and sorts tracks by track number',
+      () {
+        final tracks = [
+          _makeItem(
+            id: '2',
+            trackName: 'Track Two',
+            filePath: '/storage/emulated/0/Music/track2.flac',
+            trackNumber: 2,
+          ),
+          _makeItem(
+            id: '1',
+            trackName: 'Track One',
+            filePath: '/storage/emulated/0/Music/track1.flac',
+            trackNumber: 1,
+          ),
+        ];
 
-      final tree = LibraryFolderTree.fromTracks(tracks);
-      expect(tree.rootFolders.length, 1);
-      final musicFolder = tree.rootFolders.first;
-      expect(musicFolder.name, 'Music');
-      expect(musicFolder.totalTrackCount, 2);
-      expect(musicFolder.directTracks.length, 2);
-      // Verify sorting: track 1 then track 2
-      expect(musicFolder.directTracks[0].trackName, 'Track One');
-      expect(musicFolder.directTracks[1].trackName, 'Track Two');
-      expect(musicFolder.allTracks.length, 2);
-    });
+        final tree = LibraryFolderTree.fromTracks(tracks);
+        expect(tree.rootFolders.length, 1);
+        final musicFolder = tree.rootFolders.first;
+        expect(musicFolder.name, 'Music');
+        expect(musicFolder.totalTrackCount, 2);
+        expect(musicFolder.directTracks.length, 2);
+        // Verify sorting: track 1 then track 2
+        expect(musicFolder.directTracks[0].trackName, 'Track One');
+        expect(musicFolder.directTracks[1].trackName, 'Track Two');
+        expect(musicFolder.allTracks.length, 2);
+      },
+    );
 
     test('collapses linear ancestor paths leading to folders', () {
       final tracks = [
@@ -113,12 +116,14 @@ void main() {
         _makeItem(
           id: '1',
           trackName: 'Aerodynamic',
-          filePath: '/home/user/Music/Electronic/Daft Punk/Discovery/Aerodynamic.flac',
+          filePath:
+              '/home/user/Music/Electronic/Daft Punk/Discovery/Aerodynamic.flac',
         ),
         _makeItem(
           id: '2',
           trackName: 'The Robots',
-          filePath: '/home/user/Music/Electronic/Kraftwerk/The Man-Machine/The Robots.flac',
+          filePath:
+              '/home/user/Music/Electronic/Kraftwerk/The Man-Machine/The Robots.flac',
         ),
       ];
 
@@ -157,7 +162,8 @@ void main() {
         _makeItem(
           id: '1',
           trackName: 'Content Track',
-          filePath: 'content://com.android.externalstorage.documents/document/primary%3AMusic%2FSoundtracks%2FOST.mp3',
+          filePath:
+              'content://com.android.externalstorage.documents/document/primary%3AMusic%2FSoundtracks%2FOST.mp3',
         ),
       ];
 

@@ -4,8 +4,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mornye/services/smb/v1/des.dart';
 
 void main() {
-  String hex(Uint8List bytes) =>
-      bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join().toUpperCase();
+  String hex(Uint8List bytes) => bytes
+      .map((b) => b.toRadixString(16).padLeft(2, '0'))
+      .join()
+      .toUpperCase();
 
   Uint8List fromHex(String s) {
     final clean = s.replaceAll(' ', '');
@@ -28,10 +30,7 @@ void main() {
       final challenge = fromHex('D02E4386BCE91226');
       final ntHash = fromHex('44EBBA8D5312B8D611474411F56989AE');
       final response = Des.computeNtlmV1Response(challenge, ntHash);
-      expect(
-        hex(response),
-        '82309ECD8D708B5EA08FAA3981CD83544233114A3D85D6DF',
-      );
+      expect(hex(response), '82309ECD8D708B5EA08FAA3981CD83544233114A3D85D6DF');
     });
 
     test('LMv1 Empty Password Hash Constant', () {
