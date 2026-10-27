@@ -61,6 +61,11 @@ abstract interface class PlaybackDeck {
   /// Volume, rate and the equalizer have no effect in that mode.
   bool get isDirect;
 
+  /// True only after libmpv opened the current source in WASAPI exclusive mode.
+  bool get isExclusiveOutputActive;
+  String? get outputParams;
+  String? get exclusiveOutputFallbackReason;
+
   /// True when a direct output lost its route and the source must be loaded
   /// again before playback can continue.
   bool get needsSourceReload;

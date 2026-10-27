@@ -659,6 +659,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
     _saveSettings();
   }
 
+  void setWindowsExclusiveOutput(bool enabled) {
+    state = state.copyWith(windowsExclusiveOutput: enabled);
+    _saveSettings();
+  }
+
   void setAutoMixDuration(int seconds) {
     state = state.copyWith(autoMixDuration: autoMixDurationFromJson(seconds));
     _saveSettings();

@@ -57,6 +57,7 @@ class _MusicAutoMix {
       handler._settings.autoMix &&
       !handler._settings.usbBitPerfect &&
       !handler._player.isDirect &&
+      !(Platform.isWindows && handler._settings.windowsExclusiveOutput) &&
       !handler._disposed &&
       handler._sourceReady &&
       !handler._userPaused &&

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mornye/l10n/l10n.dart';
@@ -73,7 +75,10 @@ class _AutoMixSettingsState extends ConsumerState<AutoMixSettings> {
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
     final notifier = ref.read(settingsProvider.notifier);
-    final enabled = settings.autoMix && !settings.usbBitPerfect;
+    final enabled =
+        settings.autoMix &&
+        !settings.usbBitPerfect &&
+        !(Platform.isWindows && settings.windowsExclusiveOutput);
     final l10n = context.l10n;
     final names = {
       AutoMixEffect.auto: l10n.autoMixEffectAuto,

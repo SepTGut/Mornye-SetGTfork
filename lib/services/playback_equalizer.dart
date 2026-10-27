@@ -6,6 +6,12 @@ final playbackEqualizer = ValueNotifier<EqualizerSettings>(
   const EqualizerSettings(),
 );
 
+/// Windows WASAPI exclusive output preference shared by all media_kit decks.
+final windowsExclusiveOutput = ValueNotifier<bool>(false);
+
+/// Runtime result for the primary Windows player: active, fallback, or null.
+final windowsExclusiveOutputStatus = ValueNotifier<String?>(null);
+
 /// A native error is surfaced in the editor rather than claiming EQ is active.
 final playbackEqualizerError = ValueNotifier<String?>(null);
 

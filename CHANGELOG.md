@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.5.2] - 2026-10-27
+
+### Added
+
+- **Windows WASAPI Exclusive Output**: Added optional exclusive audio output with shared-mode fallback and active output format reporting.
+- **Faster Direct USB Network Playback**: Prefetches the next network track during playback when Android Direct USB is enabled.
+
 ## [5.5.0] - 2026-10-27
 
 ### Added

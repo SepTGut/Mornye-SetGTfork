@@ -5,7 +5,7 @@ import 'dart:io';
 /// Transport pins keep active and prepared decks alive until they release them.
 class ContentUriPlaybackCache {
   ContentUriPlaybackCache({
-    required Future<String?> Function(String) copy,
+    required Future<String?> Function(String, bool Function()) copy,
     required bool Function() isDisposed,
     required bool Function(String) isPinned,
     required void Function(Object) onResolveError,
@@ -22,7 +22,7 @@ class ContentUriPlaybackCache {
        _onDeleteError = onDeleteError,
        _exists = exists ?? ((path) => File(path).exists());
 
-  final Future<String?> Function(String) _copy;
+  final Future<String?> Function(String, bool Function()) _copy;
   final bool Function() _isDisposed;
   final bool Function(String) _isPinned;
   final void Function(Object) _onResolveError;
@@ -55,7 +55,13 @@ class ContentUriPlaybackCache {
     resolution = () async {
       String? path;
       try {
-        path = await _copy(source);
+        path = await _copy(
+          source,
+          () =>
+              !_closed &&
+              !_isDisposed() &&
+              identical(_pending[source], resolution),
+        );
         if (path == null || path.isEmpty) return null;
         final size = await File(path).length();
         if (_closed ||
@@ -96,6 +102,11 @@ class ContentUriPlaybackCache {
     final entry = _entries.remove(source);
     if (entry != null) await _discard(entry.path);
     return pending != null;
+  }
+
+  /// Cancels an unfinished speculative copy but keeps any completed cache hit.
+  void cancelPending(String source) {
+    _pending.remove(source);
   }
 
   Future<void> _discard(String path) async {

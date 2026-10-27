@@ -83,6 +83,7 @@ class AppSettings {
   final bool usbDsdOverPcm;
   final bool usbAllowFixedVolume;
   final bool dapExclusive;
+  final bool windowsExclusiveOutput;
   final bool autoplay;
   final bool autoplayPersonalization;
   final bool musicHaptics;
@@ -227,6 +228,7 @@ class AppSettings {
     this.usbDsdOverPcm = false,
     this.usbAllowFixedVolume = false,
     this.dapExclusive = false,
+    this.windowsExclusiveOutput = false,
     this.autoplay = false,
     this.autoplayPersonalization = true,
     this.musicHaptics = false,
@@ -349,6 +351,7 @@ class AppSettings {
     bool? usbDsdOverPcm,
     bool? usbAllowFixedVolume,
     bool? dapExclusive,
+    bool? windowsExclusiveOutput,
     bool? autoplay,
     bool? autoplayPersonalization,
     bool? musicHaptics,
@@ -466,6 +469,8 @@ class AppSettings {
       usbDsdOverPcm: usbDsdOverPcm ?? this.usbDsdOverPcm,
       usbAllowFixedVolume: usbAllowFixedVolume ?? this.usbAllowFixedVolume,
       dapExclusive: dapExclusive ?? this.dapExclusive,
+      windowsExclusiveOutput:
+          windowsExclusiveOutput ?? this.windowsExclusiveOutput,
       autoplay: autoplay ?? this.autoplay,
       autoplayPersonalization:
           autoplayPersonalization ?? this.autoplayPersonalization,

@@ -18,6 +18,7 @@ import 'package:mornye/services/network_metadata_service.dart';
 import 'package:mornye/services/network_storage_service.dart';
 import 'package:mornye/services/platform_bridge.dart';
 import 'package:mornye/services/playback_deck.dart';
+import 'package:mornye/services/playback_equalizer.dart';
 import 'package:mornye/services/playback_notification.dart';
 import 'package:mornye/services/playback_output_volume.dart';
 import 'package:mornye/services/player_widget_service.dart';
@@ -171,6 +172,8 @@ class MusicPlayerRuntime {
   void configure(AppSettings settings) {
     final previous = _settings;
     _settings = settings;
+    windowsExclusiveOutput.value =
+        Platform.isWindows && settings.windowsExclusiveOutput;
     _handler?.applySettings(previous);
   }
 

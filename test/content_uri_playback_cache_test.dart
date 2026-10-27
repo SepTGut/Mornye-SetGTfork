@@ -25,7 +25,7 @@ void main() {
   }
 
   ContentUriPlaybackCache cache(
-    Future<String?> Function(String) copy, {
+    Future<String?> Function(String, bool Function()) copy, {
     int maxEntries = 3,
     int maxBytes = 256 * 1024 * 1024,
     Future<bool> Function(String)? exists,
@@ -43,7 +43,7 @@ void main() {
   test('concurrent resolutions share one copy and reuse it', () async {
     final copy = Completer<String?>();
     var copies = 0;
-    final sources = cache((_) {
+    final sources = cache((_, __) {
       copies++;
       return copy.future;
     });
@@ -63,7 +63,7 @@ void main() {
     final older = Completer<String?>();
     final newer = Completer<String?>();
     var copies = 0;
-    final sources = cache((_) => copies++ == 0 ? older.future : newer.future);
+    final sources = cache((_, __) => copies++ == 0 ? older.future : newer.future);
     final oldResult = sources.resolve('content://music/one');
     expect(await sources.invalidate('content://music/one'), isTrue);
     final newResult = sources.resolve('content://music/one');
@@ -83,7 +83,7 @@ void main() {
 
   test('editing waits for and discards an older tag snapshot', () async {
     final copy = Completer<String?>();
-    final sources = cache((_) => copy.future);
+    final sources = cache((_, __) => copy.future);
     final resolution = sources.resolve('content://music/one');
     var invalidated = false;
     final edit = sources.invalidate('content://music/one', waitForPending: true)
@@ -100,7 +100,7 @@ void main() {
   });
 
   test('entry eviction retains a pinned deck until it releases', () async {
-    final sources = cache((source) => file(source), maxEntries: 1);
+    final sources = cache((source, __) => file(source), maxEntries: 1);
     final first = (await sources.resolve('one'))!;
     pins.add(first);
     await sources.resolve('two');
@@ -116,7 +116,7 @@ void main() {
   test(
     'byte budget permits one oversized track and evicts older copies',
     () async {
-      final sources = cache((source) => file(source, bytes: 4), maxBytes: 3);
+      final sources = cache((source, __) => file(source, bytes: 4), maxBytes: 3);
       final first = (await sources.resolve('one'))!;
       expect(await File(first).exists(), isTrue);
       final second = (await sources.resolve('two'))!;
@@ -131,7 +131,7 @@ void main() {
     'shutdown does not wait for a provider and cleans its late copy',
     () async {
       final copy = Completer<String?>();
-      final sources = cache((_) => copy.future);
+      final sources = cache((_, __) => copy.future);
       final resolution = sources.resolve('content://music/one');
       disposed = true;
       await sources.dispose();
@@ -145,7 +145,7 @@ void main() {
 
   test('provider failure allows a later retry', () async {
     var copies = 0;
-    final sources = cache((_) async {
+    final sources = cache((_, __) async {
       if (copies++ == 0) throw StateError('provider offline');
       return file('retry');
     });

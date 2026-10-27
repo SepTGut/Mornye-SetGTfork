@@ -66,16 +66,22 @@ class PlaybackProcessing {
     required this.normalizationGain,
     required this.direct,
     required this.autoMixRate,
+    required this.exclusiveOutputActive,
+    required this.outputParams,
+    required this.exclusiveOutputFallbackReason,
   });
 
   /// Linear volume from ReplayGain normalization; 1 when none applies.
   final double normalizationGain;
 
-  /// A direct USB or exclusive path that bypasses the system mixer and DSP.
+  /// A direct USB path that bypasses the system mixer and DSP.
   final bool direct;
 
   /// AutoMix tempo matching; 1 outside a transition.
   final double autoMixRate;
+  final bool exclusiveOutputActive;
+  final String? outputParams;
+  final String? exclusiveOutputFallbackReason;
 }
 
 /// Refreshes gain tags after a successful file update, including SAF copies.
@@ -138,6 +144,7 @@ class MusicPlayerHandler extends BaseAudioHandler
   int _index = -1;
   int _playRequestGeneration = 0;
   String? _activeResolvedPath;
+  String? _prefetchedNetworkSource;
   bool _disposed = false;
   Future<void>? _disposeFuture;
   bool _initialized = false;
@@ -192,7 +199,8 @@ class MusicPlayerHandler extends BaseAudioHandler
     }
     if (previous.autoMix != settings.autoMix ||
         previous.autoMixOptions != settings.autoMixOptions ||
-        previous.usbBitPerfect != settings.usbBitPerfect) {
+        previous.usbBitPerfect != settings.usbBitPerfect ||
+        previous.windowsExclusiveOutput != settings.windowsExclusiveOutput) {
       unawaited(_autoMix.cancel());
     }
     // USB changes apply at the next source boundary, without raising volume.
@@ -231,8 +239,8 @@ class MusicPlayerHandler extends BaseAudioHandler
       pulse: hapticPulse,
     );
     _sourceCache = ContentUriPlaybackCache(
-      copy: (source) => source.startsWith('network://')
-          ? _copyNetworkPlaybackToTemp(source)
+      copy: (source, isCurrent) => source.startsWith('network://')
+          ? _copyNetworkPlaybackToTemp(source, isCurrent)
           : PlatformBridge.copyContentUriToTemp(source),
       isDisposed: () => _disposed,
       isPinned: (path) =>
@@ -910,6 +918,7 @@ class MusicPlayerHandler extends BaseAudioHandler
         }.contains(Uri.tryParse(path)?.scheme) ||
         !_settings.playbackNormalization ||
         _settings.usbBitPerfect ||
+        (Platform.isWindows && _settings.windowsExclusiveOutput) ||
         _player.isDirect) {
       return 1.0;
     }
@@ -928,6 +937,9 @@ class MusicPlayerHandler extends BaseAudioHandler
     normalizationGain: _normalizationVolume,
     direct: _player.isDirect,
     autoMixRate: _autoMix.rate,
+    exclusiveOutputActive: _player.isExclusiveOutputActive,
+    outputParams: _player.outputParams,
+    exclusiveOutputFallbackReason: _player.exclusiveOutputFallbackReason,
   );
 
   /// Re-applies normalization to the playing track when the setting flips.
@@ -997,10 +1009,12 @@ class MusicPlayerHandler extends BaseAudioHandler
   /// Direct USB needs a seekable local file. Network-drive tracks normally use
   /// the loopback streaming URL returned by NetworkStorageService, so stage
   /// them to disk only when the user explicitly selected Direct USB.
-  Future<String?> _copyNetworkPlaybackToTemp(String source) async {
-    final generation = _playRequestGeneration;
+  Future<String?> _copyNetworkPlaybackToTemp(
+    String source,
+    bool Function() isCurrent,
+  ) async {
     void checkpoint() {
-      if (_disposed || generation != _playRequestGeneration) {
+      if (_disposed || !isCurrent()) {
         throw const _PlaybackSourceStagingCancelled();
       }
     }
@@ -1080,6 +1094,39 @@ class MusicPlayerHandler extends BaseAudioHandler
   }
 
   Future<void> _cleanupPendingResolvedPaths() => _sourceCache.releaseUnpinned();
+
+  void _scheduleNetworkTrackPrefetch() {
+    final shouldPrefetch =
+        _dependencies.isAndroid &&
+        _settings.usbBitPerfect &&
+        _settings.usbDirect &&
+        _index >= 0 &&
+        _index < _media.length;
+    String? nextSource;
+    if (shouldPrefetch) {
+      final nextIndex = _index + 1 < _media.length
+          ? _index + 1
+          : _repeatMode == AudioServiceRepeatMode.all && _media.length > 1
+          ? 0
+          : -1;
+      if (nextIndex >= 0 && nextIndex != _index) {
+        final next = _media[nextIndex];
+        if (next.source.startsWith('network://')) nextSource = next.source;
+      }
+    }
+
+    final previous = _prefetchedNetworkSource;
+    if (previous != null && previous != nextSource) {
+      _sourceCache.cancelPending(previous);
+    }
+    _prefetchedNetworkSource = nextSource;
+    if (nextSource == null || _sourceCache.cachedPath(nextSource) != null) {
+      return;
+    }
+    // Resolve runs through the same cache used by playback. A later play of
+    // this track joins the transfer and opens the completed seekable file.
+    unawaited(_sourceCache.resolve(nextSource));
+  }
 
   void _markSessionQueueChanged() => _sessionWriter.queueChanged();
 
@@ -1669,6 +1716,7 @@ class MusicPlayerHandler extends BaseAudioHandler
       }
       _broadcastPosition(effectiveStartPosition, force: true);
       _broadcastState();
+      _scheduleNetworkTrackPrefetch();
       _lastPeriodicPersistAt = DateTime.now();
       unawaited(_persistSession(position: effectiveStartPosition));
       // Some files do not emit onDurationChanged reliably (stuck at 0:00);

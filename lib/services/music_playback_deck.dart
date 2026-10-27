@@ -221,6 +221,12 @@ class AudioplayersPlaybackDeck implements PlaybackDeck {
   @override
   bool get isDirect => _direct;
   @override
+  bool get isExclusiveOutputActive => false;
+  @override
+  String? get outputParams => null;
+  @override
+  String? get exclusiveOutputFallbackReason => null;
+  @override
   bool get needsSourceReload => _direct && _routeLost;
   @override
   Future<void> cancelPreparation() async {

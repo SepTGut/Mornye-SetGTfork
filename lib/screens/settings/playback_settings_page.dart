@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mornye/l10n/l10n.dart';
 import 'package:mornye/providers/settings_provider.dart';
 import 'package:mornye/services/music_playback_deck.dart';
+import 'package:mornye/services/playback_equalizer.dart'
+    show windowsExclusiveOutputStatus;
 import 'package:mornye/services/music_player_service.dart'
     show resetAutoplayLearning;
 import 'package:mornye/screens/listening_statistics_screen.dart';
@@ -142,14 +144,18 @@ class _PlaybackSettingsPageState extends ConsumerState<PlaybackSettingsPage> {
                   title: context.l10n.libraryPlaybackNormalization,
                   subtitle: context.l10n.libraryPlaybackNormalizationSubtitle,
                   value: settings.playbackNormalization,
-                  enabled: !settings.usbBitPerfect,
+                  enabled:
+                      !settings.usbBitPerfect &&
+                      !(Platform.isWindows && settings.windowsExclusiveOutput),
                   onChanged: (value) => ref
                       .read(settingsProvider.notifier)
                       .setPlaybackNormalization(value),
                 ),
                 if (settings.playbackNormalization)
                   PlaybackNormalizationSettings(
-                    enabled: !settings.usbBitPerfect,
+                    enabled:
+                        !settings.usbBitPerfect &&
+                        !(Platform.isWindows && settings.windowsExclusiveOutput),
                   ),
                 if (!isDesktopPlatform) ...[
                   SettingsSwitchItem(
@@ -172,7 +178,9 @@ class _PlaybackSettingsPageState extends ConsumerState<PlaybackSettingsPage> {
                   title: 'AutoMix',
                   subtitle: context.l10n.autoMixDescription,
                   value: settings.autoMix,
-                  enabled: !settings.usbBitPerfect,
+                  enabled:
+                      !settings.usbBitPerfect &&
+                      !(Platform.isWindows && settings.windowsExclusiveOutput),
                   onChanged: (value) =>
                       ref.read(settingsProvider.notifier).setAutoMix(value),
                   showDivider: false,
@@ -324,6 +332,41 @@ class _PlaybackSettingsPageState extends ConsumerState<PlaybackSettingsPage> {
               child: SettingsSectionHeader(title: 'Discord'),
             ),
             const SliverToBoxAdapter(child: DiscordPresenceSettings()),
+          ],
+          if (Platform.isWindows) ...[
+            SliverToBoxAdapter(
+              child: SettingsSectionHeader(
+                title: context.l10n.sectionAudioOutput,
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: SettingsGroup(
+                children: [
+                  ValueListenableBuilder<String?>(
+                    valueListenable: windowsExclusiveOutputStatus,
+                    builder: (context, status, _) => SettingsSwitchItem(
+                      icon: Icons.headphones,
+                      title: context.l10n.windowsExclusiveOutput,
+                      subtitle: [
+                        context.l10n.windowsExclusiveOutputDescription,
+                        if (settings.windowsExclusiveOutput)
+                          switch (status) {
+                            'active' => context.l10n.windowsExclusiveActive,
+                            'fallback' =>
+                              context.l10n.windowsExclusiveFallback,
+                            _ => context.l10n.windowsExclusivePending,
+                          },
+                      ].join('\n\n'),
+                      value: settings.windowsExclusiveOutput,
+                      onChanged: (value) => ref
+                          .read(settingsProvider.notifier)
+                          .setWindowsExclusiveOutput(value),
+                      showDivider: false,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
           if (Platform.isAndroid)
             SliverToBoxAdapter(

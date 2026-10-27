@@ -366,6 +366,10 @@ class _AudioFacts {
       _losslessFormats.contains(codec.toLowerCase());
   late final bool direct =
       (processing?.direct ?? false) && usb.reason == 'active';
+  late final bool windowsExclusive =
+      processing?.exclusiveOutputActive ?? false;
+  late final bool windowsExclusiveRequested =
+      Platform.isWindows && settings.windowsExclusiveOutput;
 
   List<_Section> sections() => [
     _Section(l10n.audioInfoSource, _source()),
@@ -463,7 +467,9 @@ class _AudioFacts {
     final String normalization;
     if (!settings.playbackNormalization) {
       normalization = l10n.audioInfoOff;
-    } else if (direct || settings.usbBitPerfect) {
+    } else if (direct ||
+        settings.usbBitPerfect ||
+        windowsExclusiveRequested) {
       normalization = l10n.audioInfoBypassed;
     } else if (gain > 0 && gain != 1) {
       normalization = l10n.audioInfoApplied(
@@ -487,6 +493,8 @@ class _AudioFacts {
       signalPath = l10n.audioInfoPathDirect;
     } else if (direct && usb.driver == 'aaudio_exclusive') {
       signalPath = l10n.audioInfoPathExclusive;
+    } else if (windowsExclusive) {
+      signalPath = l10n.audioInfoPathWasapiExclusive;
     } else {
       signalPath = l10n.audioInfoPathSystem;
     }
@@ -506,6 +514,13 @@ class _AudioFacts {
     return [
       _Fact(l10n.audioInfoPlayer, l10n.audioInfoPlayerValue),
       _Fact(l10n.audioInfoSignalPath, signalPath),
+      if (processing?.exclusiveOutputFallbackReason != null)
+        _Fact(
+          l10n.audioInfoOutputFallback,
+          processing!.exclusiveOutputFallbackReason!,
+        ),
+      if (_outputFormat case final params?)
+        _Fact(l10n.audioInfoOutputFormat, params),
       if (!direct && decoder != null)
         _Fact(
           l10n.audioInfoDecoder,
@@ -518,7 +533,9 @@ class _AudioFacts {
       _Fact(l10n.equalizerTitle, eq),
       _Fact(
         'AutoMix',
-        settings.autoMix && !settings.usbBitPerfect
+        settings.autoMix &&
+                !settings.usbBitPerfect &&
+                !windowsExclusiveRequested
             ? l10n.audioInfoOn
             : l10n.audioInfoOff,
       ),
@@ -529,6 +546,8 @@ class _AudioFacts {
         l10n.audioInfoBitPerfect,
         _bitPerfect
             ? l10n.audioInfoBitPerfectActive
+            : windowsExclusive
+            ? l10n.audioInfoExclusiveNoBitPerfect
             : l10n.audioInfoBitPerfectNo,
         emphasis: _bitPerfect,
       ),
@@ -540,7 +559,38 @@ class _AudioFacts {
 
   int? get _outputRate {
     if (direct) return usb.sampleRate;
+    if (_outputSampleRate case final rate?) return rate;
     return route?.device?.mixerSampleRate ?? route?.mixerSampleRate;
+  }
+
+  int? get _outputSampleRate {
+    final params = processing?.outputParams;
+    if (params == null) return null;
+    final match = RegExp(
+      r'(?:samplerate|sample[- ]rate)\s*[:=]\s*"?(\d+)',
+      caseSensitive: false,
+    ).firstMatch(params);
+    final rate = int.tryParse(match?.group(1) ?? '');
+    return rate != null && rate > 0 ? rate : null;
+  }
+
+  String? get _outputFormat {
+    final raw = processing?.outputParams;
+    if (raw == null || raw.isEmpty) return null;
+    final format = RegExp(
+      r'format\s*[:=]\s*"?([A-Za-z0-9_]+)',
+      caseSensitive: false,
+    ).firstMatch(raw)?.group(1);
+    final channels = RegExp(
+      r'(?:channel-count|channels)\s*[:=]\s*"?(\d+)',
+      caseSensitive: false,
+    ).firstMatch(raw)?.group(1);
+    final parts = [
+      if (format != null) format,
+      if (_outputSampleRate case final rate?) '${_khz(rate)} kHz',
+      if (channels != null) '$channels ch',
+    ];
+    return parts.isEmpty ? raw : parts.join(' · ');
   }
 
   String? get _resampling {

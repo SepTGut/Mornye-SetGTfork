@@ -172,8 +172,8 @@ class MediaKitPlaybackDeck implements PlaybackDeck {
     _equalizerChanged();
   }
 
-  /// Exclusive output (WASAPI exclusive, CoreAudio hog mode). A later output
-  /// setting enables it; until then every deck shares the system mixer.
+  /// Test override for WASAPI exclusive output; production follows the shared
+  /// Windows playback preference.
   final bool exclusiveOutput;
   final String playerId;
   final MpvEngine _engine;
@@ -218,6 +218,11 @@ class MediaKitPlaybackDeck implements PlaybackDeck {
   Timer? _positionTimer;
   int _token = 0;
   bool _disposed = false;
+  bool _exclusiveRequested = false;
+  bool _exclusiveAttemptAllowed = true;
+  bool _exclusiveActive = false;
+  String? _exclusiveFallbackReason;
+  String? _outputParams;
   double _gain = 1;
   int? _sampleRate;
 
@@ -246,6 +251,12 @@ class MediaKitPlaybackDeck implements PlaybackDeck {
   PlaybackDeckState get state => _state;
   @override
   bool get isDirect => false;
+  @override
+  bool get isExclusiveOutputActive => _exclusiveActive;
+  @override
+  String? get exclusiveOutputFallbackReason => _exclusiveFallbackReason;
+  @override
+  String? get outputParams => _outputParams;
   @override
   bool get needsSourceReload => false;
   @override
@@ -334,8 +345,35 @@ class MediaKitPlaybackDeck implements PlaybackDeck {
 
   @override
   Future<void> configureOutput() async {
-    if (exclusiveOutput) {
-      await _engine.setProperty('audio-exclusive', 'yes');
+    _exclusiveRequested = exclusiveOutput || windowsExclusiveOutput.value;
+    _exclusiveAttemptAllowed = true;
+    _exclusiveActive = false;
+    _exclusiveFallbackReason = null;
+    _outputParams = null;
+    if (playerId == 'music-player') {
+      windowsExclusiveOutputStatus.value =
+          _exclusiveRequested ? 'starting' : null;
+    }
+    var result = -1;
+    try {
+      result = await _engine.setProperty(
+        'audio-exclusive',
+        _exclusiveRequested ? 'yes' : 'no',
+      );
+    } catch (error) {
+      _exclusiveFallbackReason = error.toString();
+    }
+    if (_exclusiveRequested && result < 0) {
+      _exclusiveAttemptAllowed = false;
+      _exclusiveFallbackReason ??= 'libmpv rejected WASAPI exclusive mode';
+      if (playerId == 'music-player') {
+        windowsExclusiveOutputStatus.value = 'fallback';
+      }
+      try {
+        await _engine.setProperty('audio-exclusive', 'no');
+      } catch (error) {
+        _log.w('Failed to restore shared audio output: $error');
+      }
     }
   }
 
@@ -384,19 +422,28 @@ class MediaKitPlaybackDeck implements PlaybackDeck {
   Future<void> _load(String source, {bool requiresDsd = false}) async {
     await stop();
     final token = ++_token;
-    final loaded = Completer<String?>();
-    _pendingLoad = loaded;
     _failure = null;
     _duration = null;
-    String? error;
-    try {
-      await _engine.open(source);
-      error = await loaded.future.timeout(
-        _loadTimeout,
-        onTimeout: () => 'Timed out opening the source',
-      );
-    } finally {
-      if (identical(_pendingLoad, loaded)) _pendingLoad = null;
+    var error = await _openAndWait(source);
+    if (error != null && _exclusiveRequested && _exclusiveAttemptAllowed) {
+      _exclusiveFallbackReason = error;
+      _exclusiveActive = false;
+      await _engine.stop();
+      _duration = null;
+      try {
+        await _engine.setProperty('audio-exclusive', 'no');
+      } catch (fallbackError) {
+        _log.w('Failed to switch to shared audio output: $fallbackError');
+      }
+      error = await _openAndWait(source);
+      if (playerId == 'music-player') {
+        windowsExclusiveOutputStatus.value = 'fallback';
+      }
+    } else if (error == null && _exclusiveRequested && _exclusiveAttemptAllowed) {
+      _exclusiveActive = true;
+      if (playerId == 'music-player') {
+        windowsExclusiveOutputStatus.value = 'active';
+      }
     }
     if (_disposed || token != _token) return;
     if (error != null) {
@@ -404,6 +451,28 @@ class MediaKitPlaybackDeck implements PlaybackDeck {
       // libmpv converts DSD to PCM when its FFmpeg build has the decoder.
       if (requiresDsd) throw UsbDsdUnavailable();
       throw MediaKitSourceException(error);
+    }
+    try {
+      final params = await _engine.getProperty('audio-out-params');
+      _outputParams = params.trim().isEmpty ? null : params.trim();
+    } catch (_) {
+      _outputParams = null;
+    }
+  }
+
+  Future<String?> _openAndWait(String source) async {
+    final loaded = Completer<String?>();
+    _pendingLoad = loaded;
+    try {
+      await _engine.open(source);
+      return await loaded.future.timeout(
+        _loadTimeout,
+        onTimeout: () => 'Timed out opening the source',
+      );
+    } catch (error) {
+      return error.toString();
+    } finally {
+      if (identical(_pendingLoad, loaded)) _pendingLoad = null;
     }
   }
 
@@ -543,6 +612,9 @@ class MediaKitPlaybackDeck implements PlaybackDeck {
   @override
   Future<void> dispose() async {
     if (_disposed) return;
+    if (playerId == 'music-player') {
+      windowsExclusiveOutputStatus.value = null;
+    }
     playbackEqualizer.removeListener(_equalizerChanged);
     playbackOutputVolume.removeListener(_outputVolumeChanged);
     _equalizerTimer?.cancel();
