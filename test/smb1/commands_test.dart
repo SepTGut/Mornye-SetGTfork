@@ -27,7 +27,7 @@ void main() {
       expect(diskStr, '?????\x00');
     });
 
-    test('createNtCreateRequest aligns parameter block and adds Unicode padding', () {
+    test('createNtCreateRequest aligns parameter block, excludes null from NameLength, and adds Unicode padding', () {
       final req = Smb1Commands.createNtCreateRequest(
         path: 'Music',
         tid: 1,
@@ -51,11 +51,46 @@ void main() {
       expect(encoded[83], 0x00);
       // Offset 84 should be Unicode '\' (0x005C)
       expect(bd.getUint16(84, Endian.little), r'\'.codeUnitAt(0));
+
+      // MS-CIFS 2.2.4.64.1: NameLength in word block at offset 5 is byte length of string WITHOUT null terminator
+      // '\Music' is 6 characters = 12 UTF-16LE bytes
+      final wordBlockBd = ByteData.sublistView(encoded, 33, 81);
+      expect(wordBlockBd.getUint16(5, Endian.little), 12);
+    });
+
+    test('parseNtCreateResponse extracts fid, size, lastWriteTime, and directory flags', () {
+      final raw = Uint8List(104);
+      final bd = ByteData.sublistView(raw);
+      // Header: 32 bytes
+      raw[32] = 34; // WordCount = 34
+      // Word block starts at 33
+      bd.setUint16(38, 0x4321, Endian.little); // FID at byte 38
+      bd.setUint64(60, 133000000000000000, Endian.little); // LastWriteTime at byte 60
+      bd.setUint32(76, 0x00000020, Endian.little); // ExtFileAttributes (Archive) at byte 76
+      bd.setUint64(88, 543210, Endian.little); // EndOfFile at byte 88
+      raw[100] = 0; // Directory byte
+
+      final packet = Smb1Packet(
+        command: Smb1Packet.cmdNtCreateAndX,
+        raw: raw,
+      );
+
+      final result = Smb1Commands.parseNtCreateResponse(packet);
+      expect(result.fid, 0x4321);
+      expect(result.isDirectory, isFalse);
+      expect(result.size, 543210);
+      expect(result.lastWriteTime, (133000000000000000 - 116444736000000000) ~/ 10000);
+
+      // Verify directory detection via flag
+      raw[100] = 1;
+      final dirResult = Smb1Commands.parseNtCreateResponse(packet);
+      expect(dirResult.isDirectory, isTrue);
     });
 
     test('RAP NetShareEnum request and response parsing', () {
       final req = Smb1Shares.createNetShareEnumRequest(tid: 1, uid: 2);
       expect(req.command, Smb1Packet.cmdTransaction);
+      expect(req.flags2 & Smb1Packet.flag2Unicode, 0); // No Unicode for ASCII \PIPE\LANMAN
       expect(req.words.length, 14); // 14 words
       expect(req.words[10], 76); // ParameterOffset = 76
 

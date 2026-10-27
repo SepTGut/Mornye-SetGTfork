@@ -42,13 +42,13 @@ extension NetworkStorageDelete on NetworkStorageService {
     final location = await _deletionLocation(source);
     if (location == null) return false;
     final (:connection, :path) = location;
-    if (connection.protocol == NetworkProtocol.smb) {
-      final smb = await _smb(connection, networkTarget(connection, path));
+    if (connection.usesFileClient) {
+      final client = await _fileClient(connection, networkTarget(connection, path));
       try {
-        if (!(await smb.stat().timeout(NetworkStorageService.timeout)).isFile) {
+        if (!(await client.stat().timeout(NetworkStorageService.timeout)).isFile) {
           return false;
         }
-        await smb.delete(smb.path).timeout(NetworkStorageService.timeout);
+        await client.delete(client.path).timeout(NetworkStorageService.timeout);
         return true;
       } on Smb2Exception catch (error) {
         if (error.type == Smb2ErrorType.fileNotFound) return true;
@@ -58,7 +58,7 @@ extension NetworkStorageDelete on NetworkStorageService {
         rethrow;
       } finally {
         try {
-          await smb.close();
+          await client.close();
         } catch (_) {}
       }
     }

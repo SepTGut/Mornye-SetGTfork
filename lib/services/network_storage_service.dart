@@ -11,6 +11,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:html/parser.dart' as html;
+import 'package:mornye/services/ftp/ftp_client.dart';
 import 'package:mornye/services/local_network_access.dart';
 import 'package:mornye/services/network_certificate.dart';
 import 'package:mornye/services/network_smb_client.dart';
@@ -71,7 +72,7 @@ List<NetworkEntry> _hydrateNetworkEntriesInBackground(List<dynamic> entries) =>
         ),
     ];
 
-enum NetworkProtocol { smb, webdav, http, subsonic }
+enum NetworkProtocol { smb, ftp, webdav, http, subsonic }
 
 enum SubsonicAuth { saltedToken, password, apiKey }
 
@@ -96,7 +97,11 @@ class NetworkConnection {
   final String apiKey;
   final bool smb1;
   bool get writable =>
-      protocol == NetworkProtocol.smb || protocol == NetworkProtocol.webdav;
+      protocol == NetworkProtocol.smb ||
+      protocol == NetworkProtocol.ftp ||
+      protocol == NetworkProtocol.webdav;
+  bool get usesFileClient =>
+      protocol == NetworkProtocol.smb || protocol == NetworkProtocol.ftp;
   Uri get root => Uri.parse(address);
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -143,7 +148,10 @@ class NetworkConnection {
         (protocol == NetworkProtocol.smb
             ? root.scheme != 'smb' ||
                   (root.hasPort && (root.port < 1 || root.port > 65535))
-            : !['http', 'https'].contains(root.scheme))) {
+            : protocol == NetworkProtocol.ftp
+                ? root.scheme != 'ftp' ||
+                      (root.hasPort && (root.port < 1 || root.port > 65535))
+                : !['http', 'https'].contains(root.scheme))) {
       throw const FormatException('Invalid network address');
     }
   }
@@ -363,7 +371,9 @@ class NetworkStorageService {
         target.host,
         connection.protocol == NetworkProtocol.smb && !target.hasPort
             ? 445
-            : target.port,
+            : connection.protocol == NetworkProtocol.ftp && !target.hasPort
+                ? 21
+                : target.port,
         connection.username,
         connection.protocol == NetworkProtocol.subsonic
             ? connection.id
@@ -407,28 +417,42 @@ class NetworkStorageService {
     return 'http://127.0.0.1:${server.port}/$token';
   }
 
-  Future<SmbClient> _smb(NetworkConnection c, Uri target) async {
+  static String _clientRelativePath(NetworkConnection c, Uri target) {
+    if (c.protocol == NetworkProtocol.smb) {
+      return target.pathSegments.where((s) => s.isNotEmpty).skip(1).join('/');
+    }
+    return target.pathSegments.where((s) => s.isNotEmpty).join('/');
+  }
+
+  Future<SmbClient> _fileClient(NetworkConnection c, Uri target) async {
     await _ensureAccess(target);
     var expired = false;
-    final pending = c.smb1
-        ? Smb1Client.connect(
+    final pending = c.protocol == NetworkProtocol.ftp
+        ? FtpClient.connect(
             target,
             username: c.username,
             password: c.password,
-            domain: c.domain,
             timeout: timeout,
           )
-        : NetworkSmbClient.connect(
-            target,
-            username: c.username,
-            password: c.password,
-            domain: c.domain,
-            timeout: timeout,
-          );
+        : c.smb1
+            ? Smb1Client.connect(
+                target,
+                username: c.username,
+                password: c.password,
+                domain: c.domain,
+                timeout: timeout,
+              )
+            : NetworkSmbClient.connect(
+                target,
+                username: c.username,
+                password: c.password,
+                domain: c.domain,
+                timeout: timeout,
+              );
     unawaited(
       pending
-          .then((smb) async {
-            if (expired) await smb.close();
+          .then((client) async {
+            if (expired) await client.close();
           })
           .catchError((Object _) {}),
     );
@@ -630,8 +654,9 @@ class NetworkStorageService {
       }
     }
     final target = networkTarget(c, path);
-    if (c.protocol == NetworkProtocol.smb) {
-      if (target.pathSegments.every((s) => s.isEmpty)) {
+    if (c.usesFileClient) {
+      if (c.protocol == NetworkProtocol.smb &&
+          target.pathSegments.every((s) => s.isEmpty)) {
         await _ensureAccess(target);
         final shares = await (c.smb1
             ? Smb1Client.shares(
@@ -654,14 +679,14 @@ class NetworkStorageService {
               NetworkEntry('$path${share.name}/', share.name, directory: true),
         ]);
       }
-      final smb = await _smb(c, target);
+      final client = await _fileClient(c, target);
       final List<dynamic> files;
       try {
-        files = await smb.list().timeout(timeout);
+        files = await client.list().timeout(timeout);
       } finally {
         // A failed disconnect must not hide the original share/login error.
         try {
-          await smb.close();
+          await client.close();
         } catch (_) {}
       }
       return prepareSmbEntries(files, path);
@@ -912,7 +937,7 @@ class NetworkStorageService {
   }
 
   Future<void> _serve(HttpRequest request) async {
-    SmbClient? smb;
+    SmbClient? fileClient;
     try {
       final route = _routes[request.uri.path.replaceFirst('/', '')];
       if (route == null || !['GET', 'HEAD'].contains(request.method)) {
@@ -924,9 +949,9 @@ class NetworkStorageService {
           ? _subsonicMediaTarget(c, route.path)
           : networkTarget(c, route.path);
       final range = request.headers.value(HttpHeaders.rangeHeader);
-      if (c.protocol == NetworkProtocol.smb) {
-        smb = await _smb(c, target);
-        final file = await smb.stat().timeout(timeout);
+      if (c.usesFileClient) {
+        fileClient = await _fileClient(c, target);
+        final file = await fileClient.stat().timeout(timeout);
         if (!file.isFile) {
           throw const HttpException('File unavailable');
         }
@@ -955,7 +980,7 @@ class NetworkStorageService {
         }
         if (request.method == 'GET' && file.size > 0) {
           await request.response.addStream(
-            smb.read(part.start, part.end + 1).timeout(timeout),
+            fileClient.read(part.start, part.end + 1).timeout(timeout),
           );
         }
       } else {
@@ -1003,7 +1028,7 @@ class NetworkStorageService {
       } catch (_) {}
     } finally {
       try {
-        await smb?.close();
+        await fileClient?.close();
       } catch (_) {}
       try {
         await request.response.close();

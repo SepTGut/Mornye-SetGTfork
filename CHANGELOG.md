@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **FTP Network Storage**: Added native FTP (`ftp://`) protocol support for remote network storage. Includes remote folder browsing, directory indexing and library scanning with tag/cover extraction, HTTP streaming proxy with ranged reads and seeking (`REST` + `RETR`), downloads to FTP shares with safe atomic renaming, and file deletion. Built with pure Dart sockets supporting RFC 3659 MLSD and Unix/DOS LIST directory parsing, EPSV/PASV passive data transfers with control-host pinning, and resilient error recovery.
+
+### Fixed
+
+- **SMBv1 Path Doubling**: Fixed an issue where `Smb1Client` doubled share-relative paths during directory creation, existence checks, deletion, renaming, and file uploads.
+
+---
+
 ## [5.4.0] - 2026-10-26
 
 ### Added

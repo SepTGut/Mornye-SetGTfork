@@ -120,6 +120,8 @@ void main() {
             protocol: protocol,
             address: protocol == NetworkProtocol.smb
                 ? 'smb://example.test/'
+                : protocol == NetworkProtocol.ftp
+                ? 'ftp://example.test/music/'
                 : 'https://example.test/music/',
           ),
         );

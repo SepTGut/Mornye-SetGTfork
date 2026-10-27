@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 
-import 'package:mornye/services/smb/v1/md4.dart';
 
 /// Pure-Dart implementation of DES (FIPS 46-3) and NTLMv1 / LMv1 challenge response.
 class Des {

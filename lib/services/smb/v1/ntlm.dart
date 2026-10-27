@@ -77,7 +77,23 @@ class NtlmContext {
     required String password,
     required String domain,
   }) {
-    if (type2Message.length < 32) {
+    var msg = type2Message;
+    const sig = [0x4E, 0x54, 0x4C, 0x4D, 0x53, 0x53, 0x50, 0x00];
+    for (var i = 0; i <= type2Message.length - 8; i++) {
+      var match = true;
+      for (var j = 0; j < 8; j++) {
+        if (type2Message[i + j] != sig[j]) {
+          match = false;
+          break;
+        }
+      }
+      if (match) {
+        msg = Uint8List.sublistView(type2Message, i);
+        break;
+      }
+    }
+
+    if (msg.length < 32) {
       throw const SmbException(
         'Invalid NTLMSSP Type 2 message',
         SmbErrorType.auth,
@@ -137,18 +153,18 @@ class NtlmContext {
       );
     }
 
-    final bd2 = ByteData.sublistView(type2Message);
-    final serverChallenge = Uint8List.sublistView(type2Message, 24, 32);
+    final bd2 = ByteData.sublistView(msg);
+    final serverChallenge = Uint8List.sublistView(msg, 24, 32);
 
     // Extract target info block if present
     Uint8List targetInfo = Uint8List(0);
-    if (type2Message.length >= 48) {
+    if (msg.length >= 48) {
       final targetInfoLen = bd2.getUint16(40, Endian.little);
       final targetInfoOffset = bd2.getUint32(44, Endian.little);
       if (targetInfoLen > 0 &&
-          targetInfoOffset + targetInfoLen <= type2Message.length) {
+          targetInfoOffset + targetInfoLen <= msg.length) {
         targetInfo = Uint8List.sublistView(
-          type2Message,
+          msg,
           targetInfoOffset,
           targetInfoOffset + targetInfoLen,
         );

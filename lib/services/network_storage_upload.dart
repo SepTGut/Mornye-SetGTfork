@@ -15,7 +15,7 @@ extension NetworkStorageUpload on NetworkStorageService {
     final c = await connection(uri.host);
     c.validate();
     if (!c.writable) {
-      throw const FormatException('Downloads require SMB or WebDAV');
+      throw const FormatException('Downloads require SMB, FTP or WebDAV');
     }
     return (connection: c, path: networkPath(uri.pathSegments.join('/')));
   }
@@ -57,18 +57,18 @@ extension NetworkStorageUpload on NetworkStorageService {
     if (c.protocol == NetworkProtocol.webdav) {
       await _uploadCommand(c, 'MKCOL', path, accepted: {201, 405});
     } else {
-      final smb = await _smb(c, networkTarget(c, path));
+      final client = await _fileClient(c, networkTarget(c, path));
       try {
-        if (!await smb.exists(smb.path)) {
+        if (!await client.exists(client.path)) {
           try {
-            await smb.mkdir(smb.path);
+            await client.mkdir(client.path);
           } catch (_) {
             // Concurrent album tracks can create the same parent folder.
-            if (!await smb.exists(smb.path)) rethrow;
+            if (!await client.exists(client.path)) rethrow;
           }
         }
       } finally {
-        await smb.close();
+        await client.close();
       }
     }
     // An existing file or a forbidden collection must not pass as a folder.
@@ -279,37 +279,37 @@ extension NetworkStorageUpload on NetworkStorageService {
         rethrow;
       }
     } else {
-      final smb = await _smb(c, networkTarget(c, temporary));
+      final client = await _fileClient(c, networkTarget(c, temporary));
       try {
-        if (await smb.exists(smb.path)) await smb.delete(smb.path);
-        await smb.upload(
-          smb.path,
+        if (await client.exists(client.path)) await client.delete(client.path);
+        await client.upload(
+          client.path,
           file,
           checkpoint: checkpoint,
           progress: (sent) => progress(sent, length),
         );
         checkpoint();
-        final reportedLength = (await smb.stat()).size;
+        final reportedLength = (await client.stat()).size;
         if (reportedLength != length &&
-            !await smb.matchesFile(file, length, checkpoint: checkpoint)) {
+            !await client.matchesFile(file, length, checkpoint: checkpoint)) {
           throw StateError(
             'Network upload size mismatch '
-            '(SMB: expected $length bytes, reported $reportedLength bytes)',
+            '(${c.protocol.name.toUpperCase()}: expected $length bytes, reported $reportedLength bytes)',
           );
         }
-        final destination = networkTarget(
+        final destination = NetworkStorageService._clientRelativePath(
           c,
-          path,
-        ).pathSegments.where((s) => s.isNotEmpty).skip(1).join('/');
-        // libsmb2 uses replace_if_exist=0 for rename.
-        await smb.rename(smb.path, destination);
+          networkTarget(c, path),
+        );
+        // libsmb2 and FTP use non-overwriting rename.
+        await client.rename(client.path, destination);
       } catch (_) {
         try {
-          await smb.delete(smb.path);
+          await client.delete(client.path);
         } catch (_) {}
         rethrow;
       } finally {
-        await smb.close();
+        await client.close();
       }
     }
     progress(length, length);
@@ -345,15 +345,15 @@ extension NetworkStorageUpload on NetworkStorageService {
           );
         }
       } else {
-        final smb = await _smb(
+        final client = await _fileClient(
           location.connection,
           networkTarget(location.connection, path),
         );
         try {
-          await smb.upload(smb.path, file, checkpoint: () {}, progress: (_) {});
-          await smb.delete(smb.path);
+          await client.upload(client.path, file, checkpoint: () {}, progress: (_) {});
+          await client.delete(client.path);
         } finally {
-          await smb.close();
+          await client.close();
         }
       }
     } finally {

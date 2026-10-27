@@ -114,7 +114,7 @@ class NetworkLibraryScanner {
       );
     }
     if (connection.protocol == NetworkProtocol.http) {
-      throw const FormatException('Library folders require SMB or WebDAV');
+      throw const FormatException('Library folders require SMB, FTP or WebDAV');
     }
     final root = networkPath(uri.pathSegments.join('/'));
     if (root.isNotEmpty && !root.endsWith('/')) {
@@ -154,7 +154,7 @@ class NetworkLibraryScanner {
     // Leave room for playback and avoid saturating a small NAS/router.
     final concurrency =
         _metadataConcurrency ??
-        (connection.protocol == NetworkProtocol.smb ? 2 : 3);
+        (connection.usesFileClient ? 2 : 3);
     final metadata = _readMetadata == null
         ? NetworkMetadataService(
             storage: _storage,

@@ -537,4 +537,63 @@ void main() {
       await service.dispose();
     }
   }, skip: Platform.environment['TEST_SMB_GUEST_PORT'] == null);
+
+  test('FTP connections validate address, ports, and build physicalFileKey', () {
+    final ftpDefault = connection(
+      'ftp://nas.local/Music/',
+      protocol: NetworkProtocol.ftp,
+    );
+    ftpDefault.validate();
+    expect(ftpDefault.writable, isTrue);
+    expect(ftpDefault.usesFileClient, isTrue);
+
+    final ftpExplicitPort21 = connection(
+      'ftp://nas.local:21/Music/',
+      protocol: NetworkProtocol.ftp,
+    );
+    ftpExplicitPort21.validate();
+
+    final sourceDefault =
+        NetworkStorageService.source(ftpDefault.id, 'Rock/Track.flac');
+    final sourceExplicit21 =
+        NetworkStorageService.source(ftpExplicitPort21.id, 'Rock/Track.flac');
+
+    final keyDefault = NetworkStorageService.physicalFileKey(
+      sourceDefault,
+      {ftpDefault.id: ftpDefault},
+    );
+    final keyExplicit21 = NetworkStorageService.physicalFileKey(
+      sourceExplicit21,
+      {ftpExplicitPort21.id: ftpExplicitPort21},
+    );
+    expect(keyDefault, isNotNull);
+    expect(keyDefault, startsWith('network-file:'));
+    expect(keyDefault, equals(keyExplicit21));
+
+    final ftpCustomPort = connection(
+      'ftp://nas.local:2121/Music/',
+      protocol: NetworkProtocol.ftp,
+    );
+    ftpCustomPort.validate();
+    final sourceCustom =
+        NetworkStorageService.source(ftpCustomPort.id, 'Rock/Track.flac');
+    final keyCustom = NetworkStorageService.physicalFileKey(
+      sourceCustom,
+      {ftpCustomPort.id: ftpCustomPort},
+    );
+    expect(keyCustom, isNotNull);
+    expect(keyCustom, isNot(equals(keyDefault)));
+
+    final invalidScheme = connection(
+      'http://nas.local/Music/',
+      protocol: NetworkProtocol.ftp,
+    );
+    expect(() => invalidScheme.validate(), throwsFormatException);
+
+    final invalidPort = connection(
+      'ftp://nas.local:99999/Music/',
+      protocol: NetworkProtocol.ftp,
+    );
+    expect(() => invalidPort.validate(), throwsFormatException);
+  });
 }

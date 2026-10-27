@@ -846,6 +846,8 @@ class _NetworkConnectionFormState extends State<_NetworkConnectionForm> {
                         required: true,
                         hint: _protocol == NetworkProtocol.smb
                             ? 'smb://server/Music/'
+                            : _protocol == NetworkProtocol.ftp
+                            ? 'ftp://server/Music/'
                             : _protocol == NetworkProtocol.subsonic
                             ? 'https://server/navidrome/'
                             : 'https://server/music/',
@@ -960,6 +962,16 @@ class _NetworkConnectionFormState extends State<_NetworkConnectionForm> {
                       const SizedBox(height: 12),
                     ],
                   ),
+                  if (_protocol == NetworkProtocol.ftp)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                      child: _NetworkMessage(
+                        icon: context.isMornye
+                            ? CupertinoIcons.info_circle
+                            : Icons.info_outline,
+                        message: context.l10n.networkFtpPlaintextWarning,
+                      ),
+                    ),
                   Padding(
                     padding: const EdgeInsets.all(24),
                     child: Text(
@@ -1052,6 +1064,7 @@ PageRoute<void> _networkRoute(
 
 String _protocolLabel(NetworkProtocol protocol) => switch (protocol) {
   NetworkProtocol.smb => 'SMB',
+  NetworkProtocol.ftp => 'FTP',
   NetworkProtocol.webdav => 'WebDAV',
   NetworkProtocol.http => 'HTTP / HTTPS',
   NetworkProtocol.subsonic => 'Subsonic',

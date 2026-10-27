@@ -2,10 +2,8 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:mornye/services/smb/smb_client.dart';
-import 'package:mornye/services/smb/v1/commands.dart';
 import 'package:mornye/services/smb/v1/packet.dart';
 import 'package:mornye/services/smb/v1/status.dart';
-import 'package:mornye/services/smb/v1/transport.dart';
 
 class Smb1Shares {
   static const int stypeDiskTree = 0x0000;
@@ -65,6 +63,7 @@ class Smb1Shares {
       command: Smb1Packet.cmdTransaction,
       tid: tid,
       uid: uid,
+      flags2: Smb1Packet.flag2NtStatus,
       words: words,
       bytes: bytes,
     );

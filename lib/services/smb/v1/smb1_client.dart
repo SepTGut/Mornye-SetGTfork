@@ -31,8 +31,8 @@ class Smb1Client implements SmbClient {
   final Smb1Transport _transport;
   @override
   final String path;
-  int _uid;
-  int _tid;
+  final int _uid;
+  final int _tid;
   final Smb1Signer? _signer;
   final Duration _timeout;
   int _mid = 0;
@@ -97,7 +97,13 @@ class Smb1Client implements SmbClient {
         }
 
         // Type 2 Challenge from server
-        final type2Blob = setup1Resp.bytes;
+        var type2Blob = setup1Resp.bytes;
+        if (setup1Resp.words.length >= 4) {
+          final blobLen = setup1Resp.words[3];
+          if (blobLen > 0 && blobLen <= type2Blob.length) {
+            type2Blob = Uint8List.sublistView(type2Blob, 0, blobLen);
+          }
+        }
         final ntlmResult = NtlmContext.createType3Message(
           type2Message: type2Blob,
           username: username,
@@ -124,11 +130,11 @@ class Smb1Client implements SmbClient {
           );
         }
 
-        if ((negResult.signingRequired || negResult.signingEnabled) &&
+        if (negResult.signingRequired &&
             (username.isNotEmpty || password.isNotEmpty)) {
           signer = Smb1Signer(
             macKey: ntlmResult.sessionBaseKey,
-            required: negResult.signingRequired,
+            required: true,
           );
         }
       } else {
@@ -316,39 +322,24 @@ class Smb1Client implements SmbClient {
         NtStatus.toSmbErrorType(resp.status),
       );
     }
-    final fid = resp.words[2];
-    final lastWriteTime = (resp.words.length >= 16)
-        ? (resp.words[12] |
-            (resp.words[13] << 16) |
-            (resp.words[14] << 32) |
-            (resp.words[15] << 48))
-        : 0;
-    final fileAttrs = (resp.words.length >= 19) ? resp.words[18] : 0;
-    final isDir = (fileAttrs & 0x10) != 0;
-    final endOfFile = (resp.words.length >= 27)
-        ? (resp.words[23] |
-            (resp.words[24] << 16) |
-            (resp.words[25] << 32) |
-            (resp.words[26] << 48))
-        : 0;
+    final created = Smb1Commands.parseNtCreateResponse(resp);
+    await _closeHandle(created.fid);
 
-    await _closeHandle(fid);
-
-    final modifiedMs = (lastWriteTime > 116444736000000000)
-        ? ((lastWriteTime - 116444736000000000) ~/ 10000)
+    final modifiedMs = (created.lastWriteTime > 0)
+        ? created.lastWriteTime
         : DateTime.now().millisecondsSinceEpoch;
 
     return SmbStat(
-      isFile: !isDir,
-      isDirectory: isDir,
-      size: endOfFile,
+      isFile: !created.isDirectory,
+      isDirectory: created.isDirectory,
+      size: created.size,
       modified: DateTime.fromMillisecondsSinceEpoch(modifiedMs, isUtc: true),
     );
   }
 
   @override
   Future<void> mkdir(String relative) async {
-    final full = _join(path, relative);
+    final full = relative.isEmpty ? path : relative;
     final req = Smb1Commands.createCreateDirectoryRequest(
       path: full,
       tid: _tid,
@@ -366,7 +357,7 @@ class Smb1Client implements SmbClient {
 
   @override
   Future<bool> exists(String relative) async {
-    final full = _join(path, relative);
+    final full = relative.isEmpty ? path : relative;
     try {
       final req = Smb1Commands.createNtCreateRequest(
         path: full,
@@ -376,7 +367,8 @@ class Smb1Client implements SmbClient {
       );
       final resp = await _roundTrip(req);
       if (resp.status == NtStatus.success) {
-        await _closeHandle(resp.words[2]);
+        final created = Smb1Commands.parseNtCreateResponse(resp);
+        await _closeHandle(created.fid);
         return true;
       }
       if (resp.status == NtStatus.objectNameNotFound ||
@@ -391,7 +383,7 @@ class Smb1Client implements SmbClient {
 
   @override
   Future<void> delete(String relative) async {
-    final full = _join(path, relative);
+    final full = relative.isEmpty ? path : relative;
     final req = Smb1Commands.createDeleteRequest(
       path: full,
       tid: _tid,
@@ -408,8 +400,8 @@ class Smb1Client implements SmbClient {
 
   @override
   Future<void> rename(String from, String to) async {
-    final fullFrom = _join(path, from);
-    final fullTo = _join(path, to);
+    final fullFrom = from.isEmpty ? path : from;
+    final fullTo = to;
 
     // Enforce non-overwriting publish (replace_if_exist = 0)
     if (await exists(to)) {
@@ -441,7 +433,7 @@ class Smb1Client implements SmbClient {
     required void Function() checkpoint,
     required void Function(int) progress,
   }) async {
-    final full = _join(path, relative);
+    final full = relative.isEmpty ? path : relative;
     final createReq = Smb1Commands.createNtCreateRequest(
       path: full,
       tid: _tid,
@@ -456,7 +448,8 @@ class Smb1Client implements SmbClient {
         NtStatus.toSmbErrorType(createResp.status),
       );
     }
-    final fid = createResp.words[2];
+    final created = Smb1Commands.parseNtCreateResponse(createResp);
+    final fid = created.fid;
 
     try {
       var offset = 0;
@@ -519,13 +512,9 @@ class Smb1Client implements SmbClient {
     );
     final resp = await _roundTrip(req);
     if (resp.status != NtStatus.success) return false;
-    final fid = resp.words[2];
-    final endOfFile = (resp.words.length >= 27)
-        ? (resp.words[23] |
-            (resp.words[24] << 16) |
-            (resp.words[25] << 32) |
-            (resp.words[26] << 48))
-        : 0;
+    final created = Smb1Commands.parseNtCreateResponse(resp);
+    final fid = created.fid;
+    final endOfFile = created.size;
 
     try {
       if (endOfFile != length) return false;
@@ -569,7 +558,8 @@ class Smb1Client implements SmbClient {
         NtStatus.toSmbErrorType(resp.status),
       );
     }
-    final fid = resp.words[2];
+    final created = Smb1Commands.parseNtCreateResponse(resp);
+    final fid = created.fid;
     try {
       yield* _readHandle(fid, start, end);
     } finally {
@@ -597,9 +587,16 @@ class Smb1Client implements SmbClient {
         );
       }
       final dataLen = (resp.words.length >= 6) ? resp.words[5] : 0;
-      final data = (resp.bytes.length >= dataLen)
-          ? Uint8List.sublistView(resp.bytes, resp.bytes.length - dataLen)
-          : resp.bytes;
+      final raw = resp.raw;
+      final dataOffset = (resp.words.length >= 7) ? resp.words[6] : 0;
+      final Uint8List data;
+      if (raw != null && dataOffset > 0 && dataOffset + dataLen <= raw.length) {
+        data = Uint8List.sublistView(raw, dataOffset, dataOffset + dataLen);
+      } else {
+        data = (resp.bytes.length >= dataLen)
+            ? Uint8List.sublistView(resp.bytes, resp.bytes.length - dataLen)
+            : resp.bytes;
+      }
 
       if (data.isEmpty) {
         throw StateError('SMB file ended before requested range');
@@ -618,14 +615,6 @@ class Smb1Client implements SmbClient {
       );
       await _roundTrip(req);
     } catch (_) {}
-  }
-
-  String _join(String parent, String child) {
-    if (parent.isEmpty) return child;
-    if (child.isEmpty) return parent;
-    final p = parent.endsWith('/') ? parent.substring(0, parent.length - 1) : parent;
-    final c = child.startsWith('/') ? child.substring(1) : child;
-    return '$p/$c';
   }
 
   @override

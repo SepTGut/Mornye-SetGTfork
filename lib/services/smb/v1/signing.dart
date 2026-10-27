@@ -18,8 +18,12 @@ class Smb1Signer {
   void sign(Uint8List packetBytes) {
     if (packetBytes.length < 32) return;
 
-    // Set sequence number at bytes 14..17 (LE), zero bytes 18..21
+    // Ensure SMB_FLAGS2_SMB_SECURITY_SIGNATURE (0x0004) is set in Flags2 (bytes 10..11)
     final bd = ByteData.sublistView(packetBytes);
+    final flags2 = bd.getUint16(10, Endian.little);
+    bd.setUint16(10, flags2 | 0x0004, Endian.little);
+
+    // Set sequence number at bytes 14..17 (LE), zero bytes 18..21
     bd.setUint32(14, sequenceNumber, Endian.little);
     bd.setUint32(18, 0, Endian.little);
 

@@ -101,9 +101,13 @@
   "@networkSmb1Warning": {
     "description": "Warning dialog content explaining the security risks of SMB1"
   },
-  "networkErrorAddress": "Check the server address. Use smb://server/share/ for SMB, or an http:// or https:// address for WebDAV and HTTP.",
+  "networkErrorAddress": "Check the server address. Use smb://server/share/ for SMB, ftp://server/path/ for FTP, or an http:// or https:// address for WebDAV and HTTP.",
   "@networkErrorAddress": {
-    "description": "Network access error for an invalid address, with URL scheme examples for SMB, WebDAV, and HTTP connections"
+    "description": "Network access error for an invalid address, with URL scheme examples for SMB, FTP, WebDAV, and HTTP connections"
+  },
+  "networkFtpPlaintextWarning": "Standard FTP transmits credentials and files unencrypted. Use only on a trusted local network.",
+  "@networkFtpPlaintextWarning": {
+    "description": "Notice banner in network connection form when FTP is selected, explaining that plain FTP is unencrypted"
   },
   "networkConnections": "Saved connections",
   "@networkConnections": {

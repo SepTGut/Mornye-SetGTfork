@@ -144,6 +144,23 @@ class Smb1Packet {
     }
 
     final wordCount = raw[32];
+    if (wordCount == 0 && raw.length <= 34) {
+      return Smb1Packet(
+        command: command,
+        status: status,
+        flags: flags,
+        flags2: flags2,
+        pidHigh: pidHigh,
+        securityFeatures: securityFeatures,
+        reserved: reserved,
+        tid: tid,
+        pidLow: pidLow,
+        uid: uid,
+        mid: mid,
+        raw: raw,
+      );
+    }
+
     final wordsOffset = 33;
     final wordsEnd = wordsOffset + (wordCount * 2);
     if (raw.length < wordsEnd + 2) {

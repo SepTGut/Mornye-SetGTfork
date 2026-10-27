@@ -30,7 +30,7 @@ class NetworkSmbClient implements SmbClient {
     required Duration timeout,
   }) async {
     final segments = target.pathSegments.where((s) => s.isNotEmpty).toList();
-    final host = target.hasPort ? target.authority : target.host;
+    final host = target.host;
     final pool = await _native.synchronized(
       () => Smb2Pool.connect(
         host: host,
@@ -69,7 +69,7 @@ class NetworkSmbClient implements SmbClient {
   }) async {
     final raw = await _native.synchronized(
       () => Smb2Pool.listSharesOn(
-        host: target.hasPort ? target.authority : target.host,
+        host: target.host,
         user: username,
         password: password,
         domain: domain,
@@ -93,18 +93,23 @@ class NetworkSmbClient implements SmbClient {
     );
   }
 
+  @override
   Future<void> mkdir(String relative) =>
       _native.synchronized(() => _pool.mkdir(relative));
 
+  @override
   Future<bool> exists(String relative) =>
       _native.synchronized(() => _pool.exists(relative));
 
+  @override
   Future<void> delete(String relative) =>
       _native.synchronized(() => _pool.deleteFile(relative));
 
+  @override
   Future<void> rename(String from, String to) =>
       _native.synchronized(() => _pool.rename(from, to));
 
+  @override
   Future<void> upload(
     String relative,
     File file, {
@@ -137,6 +142,7 @@ class NetworkSmbClient implements SmbClient {
 
   /// Path metadata can lag behind writes on a NAS. Confirm the open file's
   /// length and bytes before accepting an upload with a different stat size.
+  @override
   Future<bool> matchesFile(
     File file,
     int length, {
@@ -174,6 +180,7 @@ class NetworkSmbClient implements SmbClient {
   }
 
   /// End is exclusive. Keep one handle and obey downstream backpressure.
+  @override
   Stream<Uint8List> read(int start, int end) async* {
     final handle = await _native.synchronized(() => _pool.openFile(path));
     try {
@@ -205,6 +212,7 @@ class NetworkSmbClient implements SmbClient {
     }
   }
 
+  @override
   Future<void> close() => _native.synchronized(() async {
     if (_closed) return;
     _closed = true;

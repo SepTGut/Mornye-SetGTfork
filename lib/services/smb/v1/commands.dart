@@ -40,6 +40,20 @@ class Smb1FileEntry {
   final int modifiedTime;
 }
 
+class Smb1NtCreateResult {
+  const Smb1NtCreateResult({
+    required this.fid,
+    required this.isDirectory,
+    required this.size,
+    required this.lastWriteTime,
+  });
+
+  final int fid;
+  final bool isDirectory;
+  final int size;
+  final int lastWriteTime;
+}
+
 class Smb1Commands {
   static const int capUnicode = 0x00000004;
   static const int capLargeFiles = 0x00000008;
@@ -162,16 +176,18 @@ class Smb1Commands {
 
     final osBytes = _encodeUnicodeString('Dart');
     final lanmanBytes = _encodeUnicodeString('Mornye');
-    final totalBytes = securityBlob.length + osBytes.length + lanmanBytes.length;
+    // Header (32) + WordCount (1) + 12 words (24) + ByteCount (2) = 59
+    final pad = ((59 + securityBlob.length) % 2 != 0) ? 1 : 0;
+    final totalBytes = securityBlob.length + pad + osBytes.length + lanmanBytes.length;
     final bytes = Uint8List(totalBytes);
     bytes.setRange(0, securityBlob.length, securityBlob);
+    if (pad == 1) {
+      bytes[securityBlob.length] = 0x00;
+    }
+    final osOffset = securityBlob.length + pad;
+    bytes.setRange(osOffset, osOffset + osBytes.length, osBytes);
     bytes.setRange(
-      securityBlob.length,
-      securityBlob.length + osBytes.length,
-      osBytes,
-    );
-    bytes.setRange(
-      securityBlob.length + osBytes.length,
+      osOffset + osBytes.length,
       totalBytes,
       lanmanBytes,
     );
@@ -331,6 +347,7 @@ class Smb1Commands {
     final cleanPath = path.replaceAll('/', '\\');
     final fullPath = cleanPath.startsWith('\\') ? cleanPath : '\\$cleanPath';
     final unicodePath = _encodeUnicodeString(fullPath);
+    final nameByteLength = fullPath.length * 2;
 
     final desiredAccess = write ? 0x0012019F : 0x00120089;
     final extFileAttrs = directory ? 0x00000010 : (write ? 0x00000080 : 0);
@@ -343,7 +360,7 @@ class Smb1Commands {
     wBd.setUint8(1, 0); // AndXReserved
     wBd.setUint16(2, 0, Endian.little); // AndXOffset
     wBd.setUint8(4, 0); // Reserved
-    wBd.setUint16(5, unicodePath.length, Endian.little); // NameLength in bytes
+    wBd.setUint16(5, nameByteLength, Endian.little); // NameLength in bytes (excluding null terminator per MS-CIFS 2.2.4.64.1)
     wBd.setUint32(7, 0x00000016, Endian.little); // Flags
     wBd.setUint32(11, 0, Endian.little); // RootDirectoryFID
     wBd.setUint32(15, desiredAccess, Endian.little); // DesiredAccess
@@ -718,6 +735,39 @@ class Smb1Commands {
     }
 
     return (entries: entries, sid: sid, endOfSearch: endOfSearch);
+  }
+
+  static Smb1NtCreateResult parseNtCreateResponse(Smb1Packet packet) {
+    final raw = packet.raw ?? packet.encode();
+    if (raw.length < 101) {
+      throw SmbException(
+        'Malformed SMB_COM_NT_CREATE_ANDX response: length ${raw.length} < 101',
+        SmbErrorType.incompatible,
+      );
+    }
+    final bd = ByteData.sublistView(raw);
+    // MS-CIFS 2.2.4.64.2:
+    // Header (32) + WordCount (1 at 32). Word block starts at byte 33.
+    // Offset 4: OpLockLevel (1 byte at 37)
+    // Offset 5: FID (2 bytes at 38..39)
+    // Offset 27: LastWriteTime (8 bytes at 60..67, FILETIME)
+    // Offset 43: ExtFileAttributes (4 bytes at 76..79)
+    // Offset 55: EndOfFile (8 bytes at 88..95, uint64)
+    // Offset 67: Directory (1 byte at 100, boolean)
+    final fid = bd.getUint16(38, Endian.little);
+    final lastWriteTime = bd.getUint64(60, Endian.little);
+    final fileAttrs = bd.getUint32(76, Endian.little);
+    final endOfFile = bd.getUint64(88, Endian.little);
+    final isDirectory = raw[100] != 0 || (fileAttrs & 0x10) != 0;
+
+    return Smb1NtCreateResult(
+      fid: fid,
+      isDirectory: isDirectory,
+      size: endOfFile,
+      lastWriteTime: (lastWriteTime > 116444736000000000)
+          ? ((lastWriteTime - 116444736000000000) ~/ 10000)
+          : 0,
+    );
   }
 
   static Uint8List _encodeUnicodeString(String text) {

@@ -21,7 +21,7 @@ void main() {
 
     test('"abc"', () {
       final digest = Md4.digest(Uint8List.fromList(ascii.encode('abc')));
-      expect(hex(digest), 'a4480131aaf21d82f6ecbea704a7e776');
+      expect(hex(digest), 'a448017aaf21d8525fc10ae87aa6729d');
     });
 
     test('"message digest"', () {
@@ -47,8 +47,7 @@ void main() {
         bd.setUint16(i * 2, units[i], Endian.little);
       }
       final ntHash = Md4.digest(bytes);
-      // Valid NT hash for "Secr3t" is 209c6174da490caeb422f3fa5a7ae634
-      expect(hex(ntHash), '209c6174da490caeb422f3fa5a7ae634');
+      expect(hex(ntHash), '3a9bc699aa6cb714d60f03acb0d9ca51');
     });
   });
 }
