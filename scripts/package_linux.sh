@@ -67,7 +67,7 @@ case "$ARCH" in
 esac
 
 UPSTREAM_VERSION="${RELEASE_VERSION#v}"
-if [[ ! "$UPSTREAM_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+if [[ ! "$UPSTREAM_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?([.-][0-9A-Za-z.-]+)?$ ]]; then
   echo "Error: invalid version $RELEASE_VERSION." >&2
   exit 1
 fi

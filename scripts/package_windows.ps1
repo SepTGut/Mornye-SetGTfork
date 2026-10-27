@@ -36,10 +36,11 @@ New-Item -ItemType Directory -Force $OutputDir | Out-Null
 $OutputDir = (Resolve-Path $OutputDir).Path
 
 $upstream = $Version -replace '^v', ''
-if ($upstream -notmatch '^(\d+)\.(\d+)\.(\d+)([.-][0-9A-Za-z.-]+)?$') {
+if ($upstream -notmatch '^(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?([.-][0-9A-Za-z.-]+)?$') {
     throw "Invalid version: $Version"
 }
-$numericVersion = "$($Matches[1]).$($Matches[2]).$($Matches[3]).0"
+$revision = if ($Matches[4]) { $Matches[4] } else { '0' }
+$numericVersion = "$($Matches[1]).$($Matches[2]).$($Matches[3]).$revision"
 
 foreach ($required in 'mornye.exe', 'flutter_windows.dll', 'data\app.so') {
     if (-not (Test-Path (Join-Path $BundleDir $required))) {

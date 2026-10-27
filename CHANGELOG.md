@@ -1,5 +1,9 @@
 # Changelog
 
+## [5.5.2.1] - 2026-10-27
+
+- Retry Android release build with a fresh version tag.
+
 ## [5.5.2] - 2026-10-27
 
 ### Added

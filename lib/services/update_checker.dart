@@ -468,7 +468,17 @@ class UpdateChecker {
         currentParts.add(0);
       }
 
-      for (int i = 0; i < 3; i++) {
+      final partCount = latestParts.length > currentParts.length
+          ? latestParts.length
+          : currentParts.length;
+      while (latestParts.length < partCount) {
+        latestParts.add(0);
+      }
+      while (currentParts.length < partCount) {
+        currentParts.add(0);
+      }
+
+      for (int i = 0; i < partCount; i++) {
         if (latestParts[i] > currentParts[i]) return true;
         if (latestParts[i] < currentParts[i]) return false;
       }
